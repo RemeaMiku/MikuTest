@@ -1,0 +1,25 @@
+@page "/"
+@inject MikuTest.Web.Services.QuizService Service
+@inject ManagementRecords Records
+<PageTitle>MikuTest · 测试广场</PageTitle>
+@if(!string.IsNullOrWhiteSpace(announcement)){<section class="card site-announcement" role="status">@announcement</section>}
+<section class="cover-hero"><div class="glass-panel"><div class="eyebrow">HATSUNE MIKU / KNOWLEDGE ARCHIVE</div><h1>MIKU<br/>TEST<span class="hero-dot">.</span></h1><p class="hero-subtitle">把热爱，变成你的答案。</p><p>从第一声歌唱，到每一场相遇。<br/>探索属于你的初音未来知识地图。</p><div class="hero-links"><a href="#quiz-collection">探索测试 ↘</a><a href="/practice">自由组卷 →</a></div></div><span class="cover-caption">A JOURNEY THROUGH THE MIKU WORLD / 01</span></section>
+<div class="section-head" id="quiz-collection"><div><div class="eyebrow">01 / EXPLORE THE COLLECTION</div><h2>从好奇开始。</h2></div><p>文字、图像与声音。<br/>用不同的方式，重新认识初音未来。</p></div>
+@if (quizzes is null) { <p role="status">正在加载题库…</p> }
+else {
+ <div class="grid quiz-grid"><article class="card practice-card"><span class="collection-number">∞</span><div class="eyebrow">YOUR OWN SELECTION</div><h3>定制你的练习</h3><p>按考察领域、标签和难度，组合一份属于你的试卷。</p><p class="muted">自由选择 · 每次都有新发现</p><a class="button" href="/practice">随机组卷 →</a></article>@for(var index=0;index<quizzes.Count;index++) { var quiz=quizzes[index];
+  <article class="card"><span class="collection-number">@((index+1).ToString("D2"))</span><div class="eyebrow">KNOWLEDGE / MEDIA</div><h3>@quiz.Title</h3><p>@quiz.Description</p><p class="muted">@quiz.Questions.Count 题 · 总分 @quiz.TotalPoints.ToString("0.##") 分 · 不限时</p><a class="button" href="@($"/quiz/{quiz.Id}")">开始答题 →</a></article>
+ }</div>
+ @if(quizzes.Count == 0){<p class="muted">暂无开放的预制测试，你仍可以使用随机组卷练习。</p>}
+}
+
+@code {
+    private List<MikuTest.Web.Models.Quiz>? quizzes;
+    private string? announcement;
+
+    protected override async Task OnInitializedAsync()
+    {
+        quizzes = await Service.ListAsync();
+        announcement = (await Records.SettingsAsync()).Announcement;
+    }
+}

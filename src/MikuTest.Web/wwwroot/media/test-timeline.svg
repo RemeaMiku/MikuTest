@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">时间轴识别测试卡</title><desc id="desc">从左到右标出 2007、2013、2016</desc>
+  <rect width="960" height="540" rx="36" fill="#eefaf8"/><path d="M145 270h670" stroke="#286b69" stroke-width="18" stroke-linecap="round"/>
+  <g fill="#39c5bb" stroke="#fff" stroke-width="12"><circle cx="190" cy="270" r="48"/><circle cx="480" cy="270" r="48"/><circle cx="770" cy="270" r="48"/></g>
+  <g font-family="Arial,sans-serif" font-size="58" font-weight="700" fill="#173f3e" text-anchor="middle"><text x="190" y="185">2007</text><text x="480" y="185">2013</text><text x="770" y="185">2016</text></g>
+  <text x="480" y="415" text-anchor="middle" font-family="Arial,sans-serif" font-size="34" fill="#397a77">TEST TIMELINE</text>
+</svg>

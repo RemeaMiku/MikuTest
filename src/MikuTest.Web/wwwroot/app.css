@@ -1,0 +1,238 @@
+:root {
+  font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
+  color: #213a40;
+  background: #f4f8f7;
+}
+body {
+  margin: 0;
+  background: #f4f8f7;
+  color: #213a40;
+}
+a {
+  color: #087b78;
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+.shell {
+  max-width: 1080px;
+  margin: auto;
+  padding: 0 28px;
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 28px 0;
+  border-bottom: 1px solid #dce9e5;
+  gap: 20px;
+}
+.brand {
+  font-size: 25px;
+  font-weight: 800;
+  color: #123b3c;
+}
+.brand span {
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: #658080;
+}
+nav {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+nav .active {
+  font-weight: 700;
+}
+.nav-button {
+  border: 0;
+  background: none;
+  color: #087b78;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+main {
+  min-height: 75vh;
+  padding: 36px 0 60px;
+}
+footer {
+  padding: 24px 0;
+  color: #657e7c;
+  font-size: 13px;
+}
+.hero {
+  padding: 42px;
+  border-radius: 0;
+  background: linear-gradient(125deg, #d6f9ee, #e7f5fa);
+  margin-bottom: 36px;
+}
+.eyebrow {
+  font-size: 12px;
+  letter-spacing: 2px;
+  font-weight: 700;
+  color: #187e77;
+  margin-bottom: 16px;
+}
+h1 {
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1.35;
+  margin: 12px 0 18px;
+}
+h2 {
+  font-size: 23px;
+  margin: 0 0 20px;
+}
+h3 {
+  font-size: 21px;
+}
+p {
+  line-height: 1.8;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+}
+.card {
+  display: block;
+  background: white;
+  border: 1px solid #dbe9e4;
+  border-radius: 0;
+  padding: 28px;
+  box-shadow: 0 8px 28px #143e3710;
+}
+.button {
+  display: inline-block;
+  background: #117e76;
+  color: white;
+  border: 0;
+  border-radius: 0;
+  padding: 13px 24px;
+  font-weight: 700;
+  cursor: pointer;
+  margin: 8px 0;
+}
+.button:hover {
+  background: #08675f;
+  color: white;
+}
+.button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.badge {
+  display: inline-block;
+  color: #086c63;
+  background: #d8eee6;
+  padding: 7px 12px;
+  border-radius: 0;
+  font-size: 13px;
+}
+.question,
+.review {
+  margin: 20px 0;
+}
+.choice {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid #d8e4df;
+  border-radius: 0;
+  padding: 15px;
+  margin: 10px 0;
+  cursor: pointer;
+}
+.choice:has(input:checked) {
+  background: #dff8ef;
+  border-color: #0b8575;
+}
+input[type="radio"] {
+  accent-color: #117e76;
+}
+fieldset {
+  border: 0;
+  padding: 0;
+}
+.question-media {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(100%, 720px);
+  max-height: min(70vh, 640px);
+  object-fit: contain;
+  object-position: left center;
+  border-radius: 0;
+}
+.question-image-link {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  cursor: zoom-in;
+}
+audio {
+  max-width: 100%;
+  width: 480px;
+}
+figure {
+  margin: 20px 0;
+}
+figcaption,
+.muted {
+  font-size: 14px;
+  color: #526d69;
+}
+figcaption {
+  margin-top: 10px;
+}
+.table-wrap {
+  overflow: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+}
+th,
+td {
+  text-align: left;
+  padding: 16px;
+  border-bottom: 1px solid #dbe9e4;
+}
+th {
+  background: #e2f3ed;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+:focus-visible {
+  outline: 3px solid #da5790;
+  outline-offset: 4px;
+}
+@media (max-width: 600px) {
+  .shell {
+    padding: 0 16px;
+  }
+  header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .hero {
+    padding: 26px;
+  }
+  h1 {
+    font-size: 30px;
+  }
+  .card {
+    padding: 20px;
+  }
+}

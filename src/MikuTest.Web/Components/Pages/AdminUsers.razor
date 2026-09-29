@@ -1,0 +1,85 @@
+@page "/admin/users"
+@attribute [Authorize(Policy = Permissions.UserView)]
+@rendermode InteractiveServer
+@inject AccountAdminService Accounts
+@inject IManagementAccess Access
+<ActionFeedback Message="@message" Error="@error" />
+<PageTitle>MikuTest · 普通账号管理</PageTitle>
+<div class="eyebrow">USER MANAGEMENT</div><h1>普通账号管理</h1>
+<p>禁用或软删除后，账号无法登录，答题历史仍保留；恢复后可继续使用原账号。</p>
+@if(pending is {} confirmation){<section class="card admin-form-card" role="alert"><h2>确认@confirmation.Label：@confirmation.User.DisplayName？</h2><p>此操作会使目标账号当前登录失效。软删除可以恢复，不释放原账号名称。</p><div class="row-actions"><button class="danger" disabled="@busy" @onclick="Confirm">确认@confirmation.Label</button><button class="secondary" disabled="@busy" @onclick="()=>pending=null">取消</button></div></section>}
+<div class="bank-filters"><label>账号名称或 ID<input type="search" @bind="search" @bind:event="oninput" /></label></div>
+@if(users is null){<p>正在加载账号…</p>}else{
+<div class="table-wrap"><table class="admin-users"><thead><tr><th>账号</th><th>状态</th><th>注册时间</th><th>操作</th></tr></thead><tbody>
+@foreach(var user in users.Where(u=>u.UserName.Contains(search,StringComparison.OrdinalIgnoreCase)||u.DisplayName.Contains(search,StringComparison.OrdinalIgnoreCase)||u.Id==search)){
+<tr class="action-item"><td><strong>@user.DisplayName</strong><small>@user.UserName</small></td><td>@Status(user.Status)</td><td>@user.CreatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td><td><div class="row-actions item-actions">
+@if(canDisable&&user.Status==AccountStatus.Active){<button class="secondary" disabled="@busy" @onclick='()=>Ask(user,AccountStatus.Suspended,"禁用")'>禁用</button>}
+@if((canDisable&&user.Status==AccountStatus.Suspended)||(canDelete&&user.Status==AccountStatus.Deleted)){<button class="secondary" disabled="@busy" @onclick='()=>Ask(user,AccountStatus.Active,"恢复")'>恢复</button>}
+@if(canDelete&&user.Status!=AccountStatus.Deleted){<button class="danger" disabled="@busy" @onclick='()=>Ask(user,AccountStatus.Deleted,"软删除")'>软删除</button>}
+</div></td></tr>}
+</tbody></table></div>}
+
+@code {
+    private List<ManagedAccount>? users;
+    private string search = "";
+    private bool busy,
+        canDisable,
+        canDelete;
+    private string? message,
+        error;
+    private (ManagedAccount User, AccountStatus Status, string Label)? pending;
+
+    protected override Task OnInitializedAsync() => Run(Load);
+
+    private async Task Load()
+    {
+        canDisable = await Access.CanAsync(Permissions.UserDisable);
+        canDelete = await Access.CanAsync(Permissions.UserDelete);
+        users = await Accounts.ListAsync();
+    }
+
+    private void Ask(ManagedAccount user, AccountStatus status, string label) =>
+        pending = (user, status, label);
+
+    private Task Confirm() =>
+        Run(async () =>
+        {
+            var item = pending!.Value;
+            await Accounts.SetStatusAsync(item.User.Id, item.Status);
+            pending = null;
+            await Load();
+            message = $"已{item.Label}账号。";
+        });
+
+    private async Task Run(Func<Task> action)
+    {
+        if (busy)
+            return;
+        busy = true;
+        message = error = null;
+        try
+        {
+            await action();
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+        catch
+        {
+            error = "操作失败，请刷新后重试。";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private static string Status(AccountStatus status) =>
+        status switch
+        {
+            AccountStatus.Active => "启用",
+            AccountStatus.Suspended => "禁用",
+            _ => "已删除",
+        };
+}

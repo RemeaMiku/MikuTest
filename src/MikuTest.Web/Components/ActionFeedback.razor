@@ -1,0 +1,29 @@
+@inject IJSRuntime JS
+
+@code {
+    [Parameter]
+    public string? Message { get; set; }
+
+    [Parameter]
+    public string? Error { get; set; }
+    private string? previousMessage,
+        previousError;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var message = Message;
+        var error = Error;
+        var showMessage = message is not null && message != previousMessage;
+        var showError = error is not null && error != previousError;
+        previousMessage = message;
+        previousError = error;
+        try
+        {
+            if (showMessage)
+                await JS.InvokeVoidAsync("mikuToast.show", message, false);
+            if (showError)
+                await JS.InvokeVoidAsync("mikuToast.show", error, true);
+        }
+        catch (JSDisconnectedException) { }
+    }
+}

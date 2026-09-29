@@ -1,0 +1,174 @@
+@page "/admin/quizzes"
+@attribute [Authorize(Policy = Permissions.QuizManage)]
+@rendermode InteractiveServer
+@inject MikuTest.Web.Services.QuizService Quizzes
+@inject MikuTest.Web.Services.QuizAdminService Admin
+@inject ILogger<AdminQuizzes> Logger
+<ActionFeedback Message="@message" Error="@error" />
+<PageTitle>MikuTest · 测试管理</PageTitle>
+
+<div class="eyebrow">PRESET QUIZZES</div><h1>测试管理</h1>
+<p>一套测试只保存名称、简介及有序的题目引用。同一道题可以被多套测试复用。</p>
+
+@if(quizzes is null){<p>正在加载…</p>}
+else if(draft is not null){
+ <section class="card editor admin-form-card"><h2>@(draft.Id==0?"新建测试":$"编辑测试 #{draft.Id}")</h2>
+ <label>测试名称<input maxlength="120" @bind="draft.Title" @bind:event="oninput" /></label><label>简介<textarea rows="4" maxlength="1000" @bind="draft.Description" @bind:event="oninput"></textarea></label>
+ @if(draft.Id==0){<p class="muted">新测试保存为草稿，编排完成后需手动上架，才会出现在测试广场。</p>}
+ <div class="form-actions"><button class="button" disabled="@busy" @onclick="Save">@(draft.Id==0?"保存草稿":"保存测试")</button><button class="secondary" @onclick="Cancel">取消</button></div></section>
+}
+else if(pendingDelete is not null){
+ <section class="card admin-form-card" role="alert"><h2>确认删除“@pendingDelete.Title”？</h2><p>将永久删除这套测试，以及所有用户和匿名作答产生的对应答题历史、成绩和答案记录。独立题库中的题目和公共材料会保留。此操作不可恢复。</p>
+ <div class="form-actions"><button class="danger" disabled="@busy" @onclick="Delete">删除测试及全部答题历史</button><button class="secondary" disabled="@busy" @onclick="Cancel">取消</button></div></section>
+}
+else{
+ <div class="toolbar"><button class="button" @onclick="Create">新建测试</button></div>
+ <div class="bank-filters quiz-filters"><label class="filter-search">标题或 ID<input type="search" placeholder="搜索标题或 ID，#12 精确查找" @bind="search" @bind:event="oninput" /></label><label>ID 排序<select @bind="SortDirection"><option value="asc">从小到大</option><option value="desc">从大到小</option></select></label><label>上架状态<select @bind="status"><option value="">全部测试</option><option value="draft">草稿</option><option value="active">已上架</option><option value="archived">已下架</option></select></label><button class="secondary" @onclick="ResetFilters">重置筛选</button></div>
+ <p class="muted" role="status">匹配 @Filtered.Count / @quizzes.Count 套测试</p>
+ <div class="table-wrap"><table><thead><tr><th>ID</th><th>测试</th><th>题数</th><th>操作</th></tr></thead><tbody>
+ @foreach(var quiz in Filtered){<tr @key="quiz.Id" class="action-item @(!quiz.IsPublished ? "archived-row" : null)"><td>#@quiz.Id</td><td><strong>@quiz.Title</strong><span class="tag">@StatusName(quiz)</span><small class="table-description">@quiz.Description</small></td><td>@quiz.Questions.Count</td>
+ <td><div class="row-actions item-actions">@if(!quiz.IsPublished){<a class="button compact" href="@($"/admin/quizzes/{quiz.Id}")">编排题目</a><button class="secondary" disabled="@busy" @onclick="()=>Edit(quiz)">编辑</button>}else{<span class="muted">下架后可编辑、编排</span>}@if(quiz.IsPublished){<button class="secondary" disabled="@busy" @onclick="()=>Unpublish(quiz)">下架</button>}else{<button class="secondary" disabled="@(busy||quiz.Questions.Count==0)" title="先添加题目，再上架测试" @onclick="()=>Publish(quiz)">上架</button>}<button class="danger" disabled="@busy" @onclick="()=>ConfirmDelete(quiz)">删除</button></div></td></tr>}
+ </tbody></table></div>
+ @if(Filtered.Count==0){<p role="status">没有匹配的测试，请调整或重置筛选。</p>}
+}
+
+@code {
+    private string search = "",
+        status = "";
+    private bool descending;
+    private string SortDirection
+    {
+        get => descending ? "desc" : "asc";
+        set => descending = value == "desc";
+    }
+
+    private static string StatusName(Quiz q) =>
+        q.IsPublished ? "已上架"
+        : q.IsDeleted ? "已下架"
+        : "草稿";
+
+    private List<Quiz> Filtered
+    {
+        get
+        {
+            var matches = (quizzes ?? [])
+                .Where(q => BankFilter.Matches(q.Id, q.Title, search))
+                .Where(q =>
+                    status switch
+                    {
+                        "active" => q.IsPublished,
+                        "archived" => q.IsDeleted,
+                        "draft" => !q.IsPublished && !q.IsDeleted,
+                        _ => true,
+                    }
+                );
+            return (descending ? matches.OrderByDescending(q => q.Id) : matches.OrderBy(q => q.Id)).ToList();
+        }
+    }
+
+    private void ResetFilters()
+    {
+        search = status = "";
+        descending = false;
+    }
+
+    private List<Quiz>? quizzes;
+    private Quiz? draft,
+        pendingDelete;
+    private bool busy;
+    private string? error,
+        message;
+
+    protected override async Task OnInitializedAsync() => await Run(Load);
+
+    private async Task Load() => quizzes = await Quizzes.AdminListAsync();
+
+    private void Create()
+    {
+        draft = new Quiz();
+        error = message = null;
+    }
+
+    private void Edit(Quiz q)
+    {
+        draft = new Quiz
+        {
+            Id = q.Id,
+            Title = q.Title,
+            Description = q.Description,
+        };
+        error = message = null;
+    }
+
+    private void ConfirmDelete(Quiz q)
+    {
+        pendingDelete = q;
+        error = message = null;
+    }
+
+    private void Cancel()
+    {
+        draft = pendingDelete = null;
+        error = message = null;
+    }
+
+    private async Task Save() =>
+        await Run(async () =>
+        {
+            var isNew = draft!.Id == 0;
+            var id = await Admin.SaveAsync(draft);
+            draft = null;
+            await Load();
+            message = isNew ? $"测试 #{id} 已保存为草稿，请编排题目后上架。" : $"测试 #{id} 已保存。";
+        });
+
+    private async Task Delete() =>
+        await Run(async () =>
+        {
+            await Admin.DeleteAsync(pendingDelete!.Id);
+            pendingDelete = null;
+            await Load();
+            message = "测试及其全部答题历史已删除，独立题库中的题目仍保留。";
+        });
+
+    private async Task Publish(Quiz quiz) =>
+        await Run(async () =>
+        {
+            await Admin.PublishAsync(quiz.Id);
+            await Load();
+            message = $"“{quiz.Title}”已上架。";
+        });
+
+    private async Task Unpublish(Quiz quiz) =>
+        await Run(async () =>
+        {
+            await Admin.UnpublishAsync(quiz.Id);
+            await Load();
+            message = $"“{quiz.Title}”已下架，答题历史保留。";
+        });
+
+    private async Task Run(Func<Task> action)
+    {
+        if (busy)
+            return;
+        busy = true;
+        error = message = null;
+        try
+        {
+            await action();
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Quiz management failed");
+            error = "操作失败，请稍后重试。";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

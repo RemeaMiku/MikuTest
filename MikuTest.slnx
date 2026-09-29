@@ -1,0 +1,8 @@
+<Solution>
+    <Folder Name="/src/">
+        <Project Path="src/MikuTest.Web/MikuTest.Web.csproj" />
+    </Folder>
+    <Folder Name="/tests/">
+        <Project Path="tests/MikuTest.SmokeTests/MikuTest.SmokeTests.csproj" />
+    </Folder>
+</Solution>

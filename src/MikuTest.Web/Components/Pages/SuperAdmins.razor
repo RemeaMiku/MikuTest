@@ -1,0 +1,126 @@
+@page "/superadmin"
+@page "/superadmin/admins"
+@page "/superadmin/permissions"
+@attribute [Authorize(Policy = Permissions.AdminManage)]
+@rendermode InteractiveServer
+@inject AccountAdminService Accounts
+<ActionFeedback Message="@message" Error="@error" />
+<PageTitle>MikuTest · 管理员与权限</PageTitle>
+<div class="eyebrow">SYSTEM ADMINISTRATION</div><h1>管理员与权限</h1>
+<p>从现有启用账号中任命管理员，逐项分配权限。超级管理员身份仅通过受控初始化配置建立。</p>
+@if(accounts is null){<p>正在加载…</p>}
+else {
+ @if(editing is not null){
+  <section class="card admin-form-card"><h2>@editing.DisplayName · 权限</h2><p>题目操作与测试管理会自动包含“浏览题库与材料”；账号操作会自动包含“查看普通账号”。</p>
+  <fieldset disabled="@busy" class="permission-picker">@foreach(var permission in Permissions.Grantable){<label><input type="checkbox" checked="@selected.Contains(permission)" @onchange="e=>Toggle(permission,(bool)e.Value!)" />@Permissions.Labels[permission]</label>}</fieldset>
+  <div class="form-actions"><button class="button" disabled="@busy" @onclick="SavePermissions">保存权限</button><button class="secondary" disabled="@busy" @onclick="()=>editing=null">取消</button></div></section>
+ }
+ @if(pending is not null){<section class="card admin-form-card" role="alert"><h2>确认@pending.Value.Label：@pending.Value.User.DisplayName？</h2><p>身份或状态变更会使该账号当前登录失效。软删除保留账号与答题历史，可恢复。</p><div class="row-actions"><button class="danger" disabled="@busy" @onclick="Confirm">确认@pending.Value.Label</button><button class="secondary" disabled="@busy" @onclick="()=>pending=null">取消</button></div></section>}
+ <div class="bank-filters"><label>账号名称或 ID<input type="search" @bind="search" @bind:event="oninput" /></label></div>
+ <h2>管理员</h2><div class="table-wrap"><table class="admin-users admin-permissions-table"><thead><tr><th>账号</th><th>身份 / 状态</th><th>权限</th><th>操作</th></tr></thead><tbody>
+ @foreach(var user in Filtered.Where(u=>u.Role!=AppRoles.User)){<tr class="action-item"><td><b>@user.DisplayName</b><small>@user.UserName</small></td><td><span class="account-role">@(user.Role==AppRoles.SuperAdmin?"超级管理员":"管理员")</span><small class="account-status">@Status(user.Status)</small></td><td><small>@(user.Role==AppRoles.SuperAdmin?"全部系统权限":string.Join("、",user.Permissions.Select(p=>Permissions.Labels[p])))</small></td><td>
+ @if(user.Role==AppRoles.SuperAdmin){<span class="muted">受保护账号</span>}else{<div class="row-actions item-actions"><button class="secondary" disabled="@busy" @onclick="()=>Edit(user)">分配权限</button><button class="secondary" disabled="@busy" @onclick='()=>Ask(user,"降为普通用户","demote")'>降为普通用户</button>
+ @if(user.Status==AccountStatus.Active){<button class="secondary" disabled="@busy" @onclick='()=>Ask(user,"禁用","suspend")'>禁用</button>}else{<button class="secondary" disabled="@busy" @onclick='()=>Ask(user,"恢复","restore")'>恢复</button>}
+ @if(user.Status!=AccountStatus.Deleted){<button class="danger" disabled="@busy" @onclick='()=>Ask(user,"软删除","delete")'>软删除</button>}</div>}</td></tr>}
+ </tbody></table></div>
+ @if(!Filtered.Any(u=>u.Role!=AppRoles.User)){<p class="empty-state">没有匹配的管理员。</p>}
+ <h2>任命管理员</h2><p class="muted">请先让协作者注册普通账号，再在这里提升。新管理员使用默认权限，默认不允许删除账号。</p>
+ <div class="table-wrap"><table class="admin-users"><thead><tr><th>普通账号</th><th>操作</th></tr></thead><tbody>@foreach(var user in Filtered.Where(u=>u.Role==AppRoles.User&&u.Status==AccountStatus.Active)){<tr class="action-item"><td>@user.DisplayName <small>@user.UserName</small></td><td><button class="button item-actions" disabled="@busy" @onclick='()=>Ask(user,"设为管理员","promote")'>设为管理员</button></td></tr>}</tbody></table></div>
+ @if(!Filtered.Any(u=>u.Role==AppRoles.User&&u.Status==AccountStatus.Active)){<p class="empty-state">暂无可任命的普通账号。</p>}
+}
+
+@code {
+    private List<ManagedAccount>? accounts;
+    private ManagedAccount? editing;
+    private HashSet<string> selected = [];
+    private string search = "";
+    private bool busy;
+    private string? message,
+        error;
+    private (ManagedAccount User, string Label, string Action)? pending;
+    private IEnumerable<ManagedAccount> Filtered =>
+        (accounts ?? []).Where(u =>
+            u.UserName.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || u.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || u.Id == search
+        );
+
+    protected override Task OnInitializedAsync() => Run(Load);
+
+    private async Task Load() => accounts = await Accounts.ListAsync(true);
+
+    private void Edit(ManagedAccount user)
+    {
+        editing = user;
+        selected = user.Permissions.ToHashSet();
+    }
+
+    private void Toggle(string p, bool value)
+    {
+        if (value)
+            selected.Add(p);
+        else
+            selected.Remove(p);
+    }
+
+    private void Ask(ManagedAccount u, string label, string action) => pending = (u, label, action);
+
+    private Task SavePermissions() =>
+        Run(async () =>
+        {
+            await Accounts.SetPermissionsAsync(editing!.Id, selected);
+            editing = null;
+            await Load();
+            message = "权限已保存，目标账号需重新登录。";
+        });
+
+    private Task Confirm() =>
+        Run(async () =>
+        {
+            var item = pending!.Value;
+            if (item.Action is "promote" or "demote")
+                await Accounts.SetAdminAsync(item.User.Id, item.Action == "promote");
+            else
+                await Accounts.SetStatusAsync(
+                    item.User.Id,
+                    item.Action == "delete" ? AccountStatus.Deleted
+                        : item.Action == "suspend" ? AccountStatus.Suspended
+                        : AccountStatus.Active
+                );
+            pending = null;
+            await Load();
+            message = $"已{item.Label}。";
+        });
+
+    private async Task Run(Func<Task> action)
+    {
+        if (busy)
+            return;
+        busy = true;
+        message = error = null;
+        try
+        {
+            await action();
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+        catch
+        {
+            error = "操作失败，请刷新后重试。";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private static string Status(AccountStatus status) =>
+        status switch
+        {
+            AccountStatus.Active => "启用",
+            AccountStatus.Suspended => "禁用",
+            _ => "已删除",
+        };
+}

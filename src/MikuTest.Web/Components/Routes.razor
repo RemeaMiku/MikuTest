@@ -1,0 +1,15 @@
+<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                <LayoutView Layout="typeof(Layout.MainLayout)">
+                    <AuthorizeView>
+                        <Authorized Context="signedIn"><section class="card"><h1>没有权限</h1><p>当前账号未获授此页面所需权限。</p><a class="button" href="/">返回首页</a></section></Authorized>
+                        <NotAuthorized Context="signedOut"><section class="card"><h1>需要登录</h1><p>登录后才能访问此页面。</p><a class="button" href="/account/login">前往登录</a></section></NotAuthorized>
+                    </AuthorizeView>
+                </LayoutView>
+            </NotAuthorized>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>

@@ -1,0 +1,24 @@
+@page "/Error"
+@using System.Diagnostics
+
+<PageTitle>MikuTest · 暂时无法加载</PageTitle>
+
+<section class="hero"><div class="eyebrow">PLEASE TRY AGAIN</div><h1>稍作休息，再出发。</h1><p>页面暂时无法加载，请重新尝试。</p><a class="button" href="/">返回测试广场 →</a></section>
+
+@if (ShowRequestId)
+{
+    <p>
+        <strong>Request ID:</strong> <code>@RequestId</code>
+    </p>
+}
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

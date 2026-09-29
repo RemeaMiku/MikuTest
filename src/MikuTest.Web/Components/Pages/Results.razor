@@ -1,0 +1,53 @@
+@page "/results/{Id:guid}"
+@inject MikuTest.Web.Services.QuizService Service
+@inject AuthenticationStateProvider Auth
+<PageTitle>MikuTest · 成绩单</PageTitle>
+@if(result is null) { <h1>未找到成绩</h1><a class="secondary" href="/">返回测试广场</a> }
+else {
+ <section class="hero"><div class="eyebrow">YOUR RESULT</div><h1>@result.Score.ToString("0.##") / @result.Total.ToString("0.##")</h1><p>@result.QuizTitle · 正确率 @(result.Answers.Count==0 ? 0 : Math.Round(100.0*result.Answers.Count(a=>a.IsCorrect)/result.Answers.Count))%</p><p>提交时间：@result.SubmittedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</p></section>
+ <h2>逐题回顾</h2>
+ @foreach(var block in result.Answers.OrderBy(x=>x.Order).GroupBy(a=>a.GroupId.HasValue?$"g:{a.GroupId}":$"q:{a.Id}")) {
+ <div class="answer-block"><SharedMaterial Group="block.First().GroupSnapshot" />
+ @foreach(var answer in block) {
+  <article class="card review"><span class="badge @(answer.IsCorrect ? "correct" : "incorrect")">@(answer.IsCorrect ? "✓ 正确" : "✕ 错误 / 未作答")</span>
+  <h3>@answer.Order. @answer.QuestionText</h3><p class="question-points">本题 @answer.Points.ToString("0.##") 分 · 得分 @((answer.IsCorrect?answer.Points:0).ToString("0.##")) 分</p>
+  @if(answer.QuestionDeleted){<p class="history-notice" role="note">此题已从题库删除，以下内容为提交时保存的快照。</p>}
+  @foreach(var media in answer.Media) {
+   <figure>
+   @switch(media.Kind) {
+    case MediaKind.Image:<a class="question-image-link" href="@media.Url" target="_blank" rel="noopener" title="点击查看原图"><img class="question-media" src="@media.Url" alt="@media.Description" /></a> break;
+    case MediaKind.Audio:<audio controls preload="metadata" src="@media.Url" aria-label="@media.Description">浏览器不支持音频。</audio> break;
+    case MediaKind.Video:<video class="question-media" controls playsinline preload="metadata" src="@media.Url" aria-label="@media.Description">浏览器不支持视频。</video> break;
+   }
+   <figcaption>@media.Description · <a href="@media.Url" target="_blank" rel="noopener">打开媒体文件</a></figcaption>
+   </figure>
+  }
+  @if(answer.Options.Count > 0) {
+   <div class="review-options" aria-label="第 @answer.Order 题全部选项">
+   @foreach(var option in answer.Options) {
+    <div class="review-option @(option.IsCorrect ? "correct-option" : "") @(option.IsSelected ? "selected-option" : "")">
+     <ChoiceContent Text="@option.Text" ImageUrl="@option.ImageUrl" /><span class="review-option-status">@if(option.IsSelected){<span class="answer-marker selected-marker">你的选择</span>} @if(option.IsCorrect){<span class="answer-marker correct-marker">正确答案</span>}</span>
+    </div>
+   }
+   </div>
+  } else { <p>你的答案：@answer.SelectedText</p><p>正确答案：@answer.CorrectText</p> }
+  <p class="muted review-explanation">@answer.Explanation</p></article>
+ }
+ </div>}
+ <div class="result-actions">@if(result.IsRandom){<a class="button" href="/practice">重新组卷</a>}else if(result.CanRetry){<a class="button" href="@($"/quiz/{result.QuizId}")">再试一次</a>}else{<span class="button disabled-action" aria-disabled="true">测试已下架，无法再试</span>}@if(signedIn){<a class="secondary" href="/me#history">返回答题历史</a>}else{<a class="secondary" href="/">返回测试广场</a>}</div>
+}
+
+@code {
+    [Parameter]
+    public Guid Id { get; set; }
+    private MikuTest.Web.Models.Attempt? result;
+    private bool signedIn;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var principal = (await Auth.GetAuthenticationStateAsync()).User;
+        signedIn = principal.Identity?.IsAuthenticated == true;
+        var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        result = await Service.ResultAsync(Id, userId);
+    }
+}

@@ -1,0 +1,41 @@
+@page "/admin"
+@attribute [Authorize(Policy = Permissions.AdminAccess)]
+@inject IDbContextFactory<QuizDbContext> DbFactory
+@inject IManagementAccess Access
+@inject AccountAdminService Accounts
+<PageTitle>MikuTest · 管理员中心</PageTitle>
+<div class="eyebrow">ADMIN CONSOLE</div><h1>管理员中心</h1>
+<p>根据当前账号的权限管理题库、测试与普通账号。</p>
+<section class="admin-stats">
+@if(quizCount.HasValue){<div class="card"><strong>@quizCount</strong><span>套固定测试</span></div>}
+@if(questionCount.HasValue){<div class="card"><strong>@questionCount</strong><span>道题目</span></div>}
+@if(userCount.HasValue){<div class="card"><strong>@userCount</strong><span>个普通账号</span></div>}
+@if(attemptCount.HasValue){<div class="card"><strong>@attemptCount</strong><span>次答题记录</span></div>}
+</section>
+<section class="admin-actions">
+ <AuthorizeView Policy="@Permissions.QuizManage"><a class="card" href="/admin/quizzes"><span class="eyebrow">PRESET QUIZZES</span><h2>测试管理</h2><p>编排预制题集，设置分值与发布状态。</p><span class="text-link">进入测试管理 →</span></a></AuthorizeView>
+ <AuthorizeView Policy="@Permissions.QuestionView"><a class="card" href="/admin/questions"><span class="eyebrow">QUESTION BANK</span><h2>独立题库</h2><p>浏览题目，并执行已获授权的题目操作。</p><span class="text-link">进入题库 →</span></a></AuthorizeView>
+ <AuthorizeView Policy="@Permissions.UserView"><a class="card" href="/admin/users"><span class="eyebrow">USERS</span><h2>普通账号</h2><p>查看普通账号，按授权禁用、恢复或软删除。</p><span class="text-link">进入账号管理 →</span></a></AuthorizeView>
+ <AuthorizeView Policy="@Permissions.AdminManage"><a class="card" href="/superadmin"><span class="eyebrow">SYSTEM</span><h2>超级管理员中心</h2><p>管理员任免、权限分配、系统设置及审计记录。</p><span class="text-link">进入系统管理 →</span></a></AuthorizeView>
+</section>
+
+@code {
+    private int? quizCount,
+        questionCount,
+        userCount,
+        attemptCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (await Access.CanAsync(Permissions.QuizManage))
+        {
+            quizCount = await db.Quizzes.CountAsync();
+            attemptCount = await db.Attempts.CountAsync();
+        }
+        if (await Access.CanAsync(Permissions.QuestionView))
+            questionCount = await db.Questions.CountAsync();
+        if (await Access.CanAsync(Permissions.UserView))
+            userCount = (await Accounts.ListAsync()).Count;
+    }
+}

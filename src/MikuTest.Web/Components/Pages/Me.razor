@@ -1,0 +1,70 @@
+@page "/me"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@inject UserManager<ApplicationUser> UserManager
+@inject MikuTest.Web.Services.QuizService Quizzes
+<ActionFeedback Message="@message" />
+<PageTitle>MikuTest · 我的主页</PageTitle>
+@if(user is null){<p role="status">正在加载个人主页…</p>}
+else{
+ <section class="profile-hero"><div><div class="eyebrow">MY MIKUTEST</div><h1>@user.DisplayName</h1><p>@user.UserName @if(isAdmin){<span class="admin-badge">@(isSuper?"超级管理员":"管理员")</span>}</p></div>
+ <div class="profile-stat"><strong>@history.Count</strong><span>次答题</span></div>
+ <div class="profile-stat"><strong>@TotalCorrect</strong><span>累计答对</span></div>
+ <div class="profile-stat"><strong>@Average%</strong><span>平均正确率</span></div></section>
+ <section class="card profile-edit"><h2>个人资料</h2>
+ <label>昵称<input maxlength="30" @bind="displayName"/></label>
+ <div class="form-actions"><button class="button" disabled="@saving" @onclick="SaveProfile">保存昵称</button><a class="secondary" href="/account/change-password">修改密码</a></div></section>
+ <h2 id="history">答题历史</h2>
+ @if(history.Count==0){<section class="card"><p>还没有答题记录。</p><a class="button" href="/practice">开始随机练习</a></section>}
+ else{<div class="history-list">@foreach(var item in history){
+  <a class="history-row" href="@($"/results/{item.Id}")"><div><strong>@item.QuizTitle</strong><small>@item.SubmittedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm") · @(item.IsRandom?"随机组卷":"固定测试")</small></div><span>@item.Score / @item.Total</span></a>
+ }</div>}
+}
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = default!;
+    private ApplicationUser? user;
+    private List<Attempt> history = [];
+    private string displayName = "";
+    private string? message;
+    private bool saving;
+    private bool isAdmin,
+        isSuper;
+    private int TotalCorrect => history.Sum(x => x.CorrectCount);
+    private int Average =>
+        history.Sum(x => x.QuestionCount) == 0
+            ? 0
+            : (int)Math.Round(100.0 * history.Sum(x => x.CorrectCount) / history.Sum(x => x.QuestionCount));
+
+    protected override async Task OnInitializedAsync()
+    {
+        var principal = (await AuthenticationState).User;
+        user = await UserManager.GetUserAsync(principal);
+        if (user is null)
+            return;
+        isSuper = await UserManager.IsInRoleAsync(user, AppRoles.SuperAdmin);
+        isAdmin = isSuper || await UserManager.IsInRoleAsync(user, AppRoles.Administrator);
+        displayName = user.DisplayName;
+        history = await Quizzes.HistoryAsync(user.Id);
+    }
+
+    private async Task SaveProfile()
+    {
+        if (user is null)
+            return;
+        var name = displayName.Trim();
+        if (name.Length is < 1 or > 30)
+        {
+            message = "昵称长度需要在 1～30 字之间。";
+            return;
+        }
+        saving = true;
+        user.DisplayName = name;
+        var result = await UserManager.UpdateAsync(user);
+        message = result.Succeeded
+            ? "昵称已保存。"
+            : string.Join("；", result.Errors.Select(e => e.Description));
+        saving = false;
+    }
+}

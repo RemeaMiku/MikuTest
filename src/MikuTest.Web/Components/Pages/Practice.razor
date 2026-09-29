@@ -1,0 +1,81 @@
+@page "/practice"
+@rendermode InteractiveServer
+@inject MikuTest.Web.Services.RandomQuizService RandomQuiz
+@inject AuthenticationStateProvider Auth
+@inject NavigationManager Navigation
+<ActionFeedback  Error="@error" />
+<PageTitle>MikuTest · 随机组卷</PageTitle>
+<div class="eyebrow">RANDOM PRACTICE</div><h1>随机组卷</h1><p>按考察领域、标签和难度从题库随机抽题。每次生成的试卷会固定题目顺序。</p>
+<section class="card builder">
+<label>题目数量<input type="number" min="1" max="50" @bind="count"/></label>
+<label>难度<select @bind="difficultyValue"><option value="0">全部难度</option><option value="1">简单</option><option value="2">普通</option><option value="3">困难</option></select></label>
+<fieldset><legend>考察领域（可多选，匹配任一领域）</legend>
+@if(domains is null){<p>正在加载考察领域…</p>}
+else{@foreach(var domain in domains){<label class="tag-choice domain-choice"><input type="checkbox" checked="@selectedDomains.Contains(domain.Id)" @onchange="e=>ToggleDomain(domain.Id,(bool)e.Value!)"/> @domain.Name</label>}}
+</fieldset>
+<fieldset><legend>标签（可多选，匹配任一标签）</legend>
+@if(tags is null){<p>正在加载标签…</p>}
+else if(tags.Count==0){<p class="muted">暂无标签，可以直接按领域和难度组卷。</p>}
+else{@foreach(var tag in tags){<label class="tag-choice"><input type="checkbox" checked="@selectedTags.Contains(tag.Id)" @onchange="e=>ToggleTag(tag.Id,(bool)e.Value!)"/> @tag.Name</label>}}
+</fieldset>
+
+<button class="button" disabled="@creating" @onclick="Create">@(creating?"正在组卷…":"生成随机试卷")</button>
+</section>
+
+@code {
+    private List<Tag>? tags;
+    private List<KnowledgeDomain>? domains;
+    private readonly HashSet<int> selectedTags = [],
+        selectedDomains = [];
+    private int count = 4,
+        difficultyValue;
+    private bool creating;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        tags = await RandomQuiz.TagsAsync();
+        domains = await RandomQuiz.DomainsAsync();
+    }
+
+    private void ToggleTag(int id, bool value)
+    {
+        if (value)
+            selectedTags.Add(id);
+        else
+            selectedTags.Remove(id);
+    }
+
+    private void ToggleDomain(int id, bool value)
+    {
+        if (value)
+            selectedDomains.Add(id);
+        else
+            selectedDomains.Remove(id);
+    }
+
+    private async Task Create()
+    {
+        creating = true;
+        error = null;
+        try
+        {
+            var state = await Auth.GetAuthenticationStateAsync();
+            var userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var difficulty = difficultyValue == 0 ? (Difficulty?)null : (Difficulty)difficultyValue;
+            var id = await RandomQuiz.CreateAsync(
+                new(count, difficulty, selectedTags.ToList(), selectedDomains.ToList()),
+                userId
+            );
+            Navigation.NavigateTo($"/practice/{id}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            creating = false;
+        }
+    }
+}

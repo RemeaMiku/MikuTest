@@ -1,0 +1,9 @@
+#blazor-error-ui {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  background: #ffe5a0;
+  padding: 1rem;
+  width: 100%;
+  z-index: 1000;
+}

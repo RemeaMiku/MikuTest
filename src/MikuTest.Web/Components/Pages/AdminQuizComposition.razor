@@ -1,0 +1,255 @@
+@page "/admin/quizzes/{Id:int}"
+@attribute [Authorize(Policy = Permissions.QuizManage)]
+@rendermode InteractiveServer
+@inject MikuTest.Web.Services.QuizService Quizzes
+@inject MikuTest.Web.Services.QuestionService Questions
+@inject MikuTest.Web.Services.QuizAdminService Admin
+@inject ILogger<AdminQuizComposition> Logger
+@inject IJSRuntime JS
+@implements IDisposable
+<ActionFeedback Message="@message" Error="@error" />
+<PageTitle>MikuTest · 编排测试</PageTitle>
+@if(loading){<p>正在加载…</p>}
+else if(quiz is null){<h1>测试不存在</h1><a href="/admin/quizzes">返回测试管理</a>}
+else if(quiz.IsPublished){<h1>@quiz.Title</h1><p role="status">这套测试已上架，请先在测试管理中下架，再编辑或编排。</p><a class="secondary" href="/admin/quizzes">返回测试管理</a>}
+else{
+ <div class="eyebrow">QUIZ COMPOSITION</div><h1>编排：@quiz.Title</h1><p>@quiz.Description</p>
+ <div class="toolbar"><span class="tag">@(quiz.IsPublished?"已上架":quiz.IsDeleted?"已下架":"草稿")</span>
+ @if(!quiz.IsPublished){<button class="button" disabled="@(busy||quiz.Questions.Count==0||pointDrafts.Count>0)" @onclick="Publish">编排完成，上架测试</button><span class="muted">上架后才会出现在测试广场并接受作答。</span>}</div>
+ @if(pointDrafts.Count>0){<p class="muted" role="status">分值正在保存或输入无效，请等待保存完成后再上架。</p>}
+ <nav class="page-actions" aria-label="编排导航"><a class="secondary" href="/admin/quizzes">← 返回测试管理</a><a class="secondary" href="@($"/admin/quizzes/{Id}#available-bank")">从下方题库添加 ↓</a></nav>
+
+ <section class="card"><h2>当前预制题集 · @quiz.Questions.Count 题 · @quiz.TotalPoints.ToString("0.##") 分</h2><p class="muted">拖动手柄移动整个材料区块；组内小题可独立排序、移除。每题 1～1000 分，只接受整数；停止输入后自动保存并更新总分。</p>
+ @if(quiz.Questions.Count==0){<p class="muted">这套测试尚未包含题目，可从下方题库添加。</p>}
+ @foreach(var block in QuestionBlocks.Split(quiz.Questions)){
+  var first=block[0];
+  <section class="composition-block action-item @RowClass(first)" @key="first.Id" @ondragover:preventDefault @ondrop:preventDefault @ondragenter="()=>Hover(first)" @ondrop="()=>Drop(first)">
+   <div class="group-heading"><span class="drag-handle" draggable="@(!busy?"true":"false")" @ondragstart="()=>StartDrag(first)" @ondragend="ClearDrag">⠿</span>
+   <div><b>@(first.Group?.Title??"独立题目")</b><small>@block.Count 题</small></div>
+   <div class="row-actions item-actions"><button class="secondary" disabled="@(first.Order==1||busy)" @onclick="()=>Place(first.Id,null,false)">置顶</button><button class="secondary" disabled="@(block.Last().Order==quiz.Questions.Count||busy)" @onclick="()=>Place(first.Id,null,true)">置底</button>
+   @if(first.GroupId.HasValue){<button class="danger" disabled="@busy" @onclick="()=>RemoveGroup(first.GroupId.Value)">移出该材料下的题目</button>}</div></div>
+   @if(first.Group is not null){<details class="bank-preview"><summary>查看公共材料</summary><SharedMaterial Group="first.Group" /></details>}
+   @foreach(var q in block){var index=block.IndexOf(q);<div class="composition-row scored-composition-row action-item" @key="q.Id"><strong>@q.Order</strong><div><b>@q.Text</b><small>#@q.Id</small></div>
+    <div class="points-editor"><label>分值<input type="number" min="1" max="1000" step="1" inputmode="numeric" aria-label="@($"题目 #{q.Id} 分值")" value="@PointValue(q)" disabled="@busy" @oninput="e=>QueuePoints(q.Id,e.Value?.ToString()??string.Empty)" /></label></div>
+    <div class="row-actions item-actions">
+    @if(q.GroupId.HasValue){<button class="secondary" disabled="@(index==0||busy)" @onclick="()=>Place(q.Id,block[index-1].Id,false)">组内上移</button><button class="secondary" disabled="@(index==block.Count-1||busy)" @onclick="()=>Place(q.Id,block[index+1].Id,true)">组内下移</button>}
+    <button class="danger" disabled="@busy" @onclick="()=>Remove(q.Id)">移出测试</button></div><QuestionPreview Question="q" /></div>}
+  </section>
+ }
+ </section>
+ <section class="card available-bank" id="available-bank"><h2>从题库添加</h2>
+ <QuestionBankFilters Filter="filter" Domains="domains" Tags="tags" Count="Filtered.Count" Total="available.Count" OnChanged="RefreshFilters" />
+ <p class="muted">筛选针对小题，公共材料自动随题加入；候选题库排除已加入的题目。</p>
+ @if(Filtered.Count==0){<p role="status">没有匹配的候选题目，请调整或重置筛选。</p>}
+ <BankCandidates Questions="Filtered" AllQuestions="all" Included="@quiz.Questions.Select(q=>q.Id).ToHashSet()" CanAdd="true" Busy="busy" OnAdd="Add" />
+ </section>
+}
+
+@code {
+    private readonly BankFilter filter = new();
+    private List<KnowledgeDomain> domains = [];
+    private List<Tag> tags = [];
+    private List<Question> Filtered => filter.Apply(available);
+    private List<Question> all = [];
+
+    private void RefreshFilters() { }
+
+    [Parameter]
+    public int Id { get; set; }
+    private Quiz? quiz;
+    private List<Question> available = [];
+    private bool loading = true,
+        busy;
+    private string? error,
+        message;
+    private Question? dragged;
+    private int? hoveredId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        await Load();
+        loading = false;
+    }
+
+    private async Task Load()
+    {
+        quiz = await Quizzes.GetForAdminAsync(Id);
+        all = await Questions.ListAsync();
+        domains = await Questions.DomainsAsync();
+        tags = all.SelectMany(q => q.Tags).DistinctBy(t => t.Id).OrderBy(t => t.Name).ToList();
+        var used = quiz?.Questions.Select(q => q.Id).ToHashSet() ?? [];
+        available = all.Where(q => !used.Contains(q.Id)).ToList();
+        foreach (var key in pointDrafts.Keys.Where(k => !used.Contains(k)).ToArray())
+            pointDrafts.Remove(key);
+    }
+
+    private Task Add(int[] ids) =>
+        Run(async () =>
+        {
+            await Admin.AddQuestionsAsync(Id, ids);
+            await Load();
+            message = $"已加入 {ids.Length} 道小题，同一材料自动集中展示。";
+        });
+
+    private Task Publish() =>
+        Run(async () =>
+        {
+            await Admin.PublishAsync(Id);
+            await Load();
+            message = "测试已上架，可以在测试广场开始答题。";
+        });
+
+    private readonly Dictionary<int, string> pointDrafts = [];
+
+    private string PointValue(Question q) =>
+        pointDrafts.GetValueOrDefault(
+            q.Id,
+            q.Points.ToString("0", System.Globalization.CultureInfo.InvariantCulture)
+        );
+
+    private readonly Dictionary<int, int> pointVersions = [];
+    private readonly SemaphoreSlim pointSaveLock = new(1, 1);
+    private readonly CancellationTokenSource lifetime = new();
+
+    public void Dispose()
+    {
+        lifetime.Cancel();
+    }
+
+    private async Task QueuePoints(int questionId, string value)
+    {
+        pointDrafts[questionId] = value;
+        var version = pointVersions.GetValueOrDefault(questionId) + 1;
+        pointVersions[questionId] = version;
+        try
+        {
+            await Task.Delay(600, lifetime.Token);
+            if (pointVersions.GetValueOrDefault(questionId) != version)
+                return;
+            await pointSaveLock.WaitAsync(lifetime.Token);
+            try
+            {
+                if (pointVersions.GetValueOrDefault(questionId) != version)
+                    return;
+                if (!int.TryParse(value, out var points) || points < 1 || points > 1000)
+                    throw new InvalidOperationException($"题目 #{questionId}：请输入 1～1000 的整数分值。");
+                await Admin.SetPointsAsync(Id, questionId, points);
+                var item = quiz?.Items.FirstOrDefault(i => i.QuestionId == questionId);
+                if (item is not null)
+                {
+                    item.Points = points;
+                    item.Question.Points = points;
+                }
+                if (pointVersions.GetValueOrDefault(questionId) == version)
+                    pointDrafts.Remove(questionId);
+                error = null;
+                await JS.InvokeVoidAsync(
+                    "mikuToast.show",
+                    $"题目 #{questionId} 的分值已自动保存为 {points} 分。",
+                    false
+                );
+            }
+            finally
+            {
+                pointSaveLock.Release();
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Point autosave failed");
+            error = $"题目 #{questionId} 分值保存失败，请重新输入以重试。";
+        }
+    }
+
+    private Task Remove(int id) =>
+        Run(async () =>
+        {
+            await Admin.RemoveQuestionAsync(Id, id);
+            await Load();
+            message = "小题已移出测试，题库仍然保留。";
+        });
+
+    private Task RemoveGroup(int groupId) =>
+        Run(async () =>
+        {
+            await Admin.RemoveGroupAsync(Id, groupId);
+            await Load();
+            message = "材料区块已移出测试，题组和小题仍然保留。";
+        });
+
+    private Task Place(int id, int? anchor, bool after) =>
+        Run(async () =>
+        {
+            await Admin.PlaceAsync(Id, id, anchor, after);
+            await Load();
+            message = "顺序已保存。";
+        });
+
+    private void StartDrag(Question q)
+    {
+        if (!busy)
+        {
+            dragged = q;
+            hoveredId = null;
+        }
+    }
+
+    private void Hover(Question q)
+    {
+        hoveredId = !busy && dragged is not null && dragged.Id != q.Id ? q.Id : null;
+    }
+
+    private void ClearDrag()
+    {
+        dragged = null;
+        hoveredId = null;
+    }
+
+    private bool IsAfter(Question q) => dragged is not null && q.Order > dragged.Order;
+
+    private string RowClass(Question q) =>
+        dragged?.Id == q.Id ? "dragging"
+        : hoveredId == q.Id ? (IsAfter(q) ? "drop-after" : "drop-before")
+        : "";
+
+    private async Task Drop(Question q)
+    {
+        var source = dragged;
+        var after = IsAfter(q);
+        ClearDrag();
+        if (busy || source is null || source.Id == q.Id)
+            return;
+        await Place(source.Id, q.Id, after);
+    }
+
+    private async Task Run(Func<Task> action)
+    {
+        if (busy)
+            return;
+        busy = true;
+        error = message = null;
+        try
+        {
+            await action();
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Quiz composition failed");
+            error = "操作失败，请稍后重试。";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

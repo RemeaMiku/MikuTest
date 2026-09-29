@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">01 识别测试卡</title><desc id="desc">蓝绿色背景中央显示 01</desc>
+  <rect width="960" height="540" rx="36" fill="#e8fbf8"/><circle cx="480" cy="270" r="190" fill="#39c5bb"/>
+  <text x="480" y="335" text-anchor="middle" font-family="Arial,sans-serif" font-size="210" font-weight="700" fill="#fff">01</text>
+  <text x="480" y="485" text-anchor="middle" font-family="Arial,sans-serif" font-size="36" fill="#286b69">CHARACTER SERIES</text>
+</svg>

@@ -1,0 +1,193 @@
+@page "/admin/groups"
+@attribute [Authorize(Policy = Permissions.QuestionView)]
+@rendermode InteractiveServer
+@inject MikuTest.Web.Services.QuestionGroupService Groups
+@inject MikuTest.Web.Services.QuestionService Questions
+@inject MikuTest.Web.Services.MediaUploadService Uploads
+@inject ILogger<AdminGroups> Logger
+@inject IManagementAccess Access
+@inject NavigationManager Navigation
+<ActionFeedback Message="@message" Error="@error" />
+<PageTitle>MikuTest · 题组与公共材料</PageTitle>
+<div class="eyebrow">SHARED MATERIALS</div><h1>题组与公共材料</h1>
+<p>一份材料可以关联多个小题。编排和随机组卷可只选其中一部分，材料始终完整保留。</p>
+
+
+<fieldset class="admin-controls" disabled="@busy">
+@if(draft is not null){
+ <section class="card editor admin-form-card">
+ <h2>@(draft.Id==0?"新增题组":$"编辑题组 #{draft.Id}")</h2>
+ <label>材料标题<input maxlength="120" @bind="draft.Title" @bind:event="oninput" /></label>
+ <label>阅读材料<textarea rows="14" maxlength="30000" placeholder="输入公共文章，支持换行分段；也可以仅上传听力或视频材料。" @bind="draft.Content" @bind:event="oninput"></textarea></label>
+ <h3>公共媒体（可选）</h3><p class="muted">图片 2 MB（自动压缩），音频 5 MB，视频 15 MB，每组最多 5 个。</p>
+ <div class="media-dropzone"><strong>@(busy?"正在处理…":"拖拽文件到这里，或点击选择文件")</strong>
+ <InputFile @key="inputKey" OnChange="Upload" multiple accept="@MikuTest.Web.Services.MediaUploadService.Accept" disabled="@(busy||media.Count>=5)" aria-label="上传公共媒体" /></div>
+ @foreach(var item in media){<div class="media-editor" @key="item">
+ @switch(item.Kind){case MediaKind.Image:<img class="upload-preview" src="@item.Url" alt="@item.Description" />break;case MediaKind.Audio:<audio controls src="@item.Url" preload="metadata"></audio>break;case MediaKind.Video:<video class="upload-preview" controls src="@item.Url" preload="metadata"></video>break;}
+ <label>媒体描述<input maxlength="500" @bind="item.Description" @bind:event="oninput" /></label><button class="secondary" @onclick="()=>media.Remove(item)">移除媒体</button></div>}
+ <div class="form-actions"><button class="button" @onclick="Save">保存公共材料</button><button class="secondary" @onclick="Cancel">返回题组列表</button></div>
+ </section>
+ @if(draft.Id>0){
+ <section class="card"><div class="group-heading"><h2>组内小题 · @Members.Count 题</h2>@if(canCreate){<a class="button" href="@($"/admin/questions?groupId={draft.Id}")">新增小题</a>}</div>
+ <p class="muted">每道小题独立设置领域、难度、标签和答案。以下顺序用于默认加入测试；测试中的顺序可单独调整。编辑小题前请先保存公共材料。</p>
+ @foreach(var q in Members){<div class="composition-row group-member-row action-item"><span>#@q.Id</span><b>@q.Text</b><div class="row-actions item-actions"><a class="secondary" href="@($"/admin/questions?edit={q.Id}")">编辑小题</a><button class="secondary" disabled="@(q.Id==Members.First().Id)" @onclick="()=>Move(q,-1)">上移</button><button class="secondary" disabled="@(q.Id==Members.Last().Id)" @onclick="()=>Move(q,1)">下移</button></div><QuestionPreview Question="q" /></div>}
+ @if(Members.Count==0){<p>还没有小题，可新增，或在题目编辑页为已有题目选择这份公共材料。</p>}
+ </section>}
+}else{
+ <div class="toolbar">@if(canCreate){<button class="button" @onclick="Create">新增题组</button>}</div>
+ @if(pendingDelete is not null){<section class="card"><p>确认删除空题组“@pendingDelete.Title”？已有历史材料快照会保留。</p><div class="form-actions"><button class="danger" @onclick="Delete">确认删除</button><button class="secondary" @onclick="()=>pendingDelete=null">取消</button></div></section>}
+ @foreach(var group in groups){<section class="card action-item"><div class="group-heading"><div><h2>#@group.Id · @group.Title</h2><span>@all.Count(q=>q.GroupId==group.Id) 道小题</span></div><div class="row-actions item-actions">@if(canEdit){<button class="button" @onclick="()=>Edit(group)">编辑题组</button>}@if(canDelete){<button class="danger" disabled="@all.Any(q=>q.GroupId==group.Id)" @onclick="()=>pendingDelete=group">删除空题组</button>}</div></div><details class="bank-preview"><summary>查看公共材料与小题</summary><SharedMaterial Group="group" />@foreach(var member in all.Where(q=>q.GroupId==group.Id).OrderBy(q=>q.GroupOrder)){<h3>@member.Text</h3><QuestionPreview Question="member" />}</details></section>}
+ @if(groups.Count==0){<p>暂无题组，先创建公共材料，再添加小题。</p>}
+}
+</fieldset>
+
+@code {
+    [SupplyParameterFromQuery(Name = "edit")]
+    public int? EditId { get; set; }
+    private List<QuestionGroup> groups = [];
+    private List<Question> all = [];
+    private QuestionGroup? draft,
+        pendingDelete;
+    private List<QuestionMedia> media = [];
+    private bool busy;
+    private int inputKey;
+    private string? error,
+        message;
+    private List<Question> Members =>
+        all.Where(q => q.GroupId == draft?.Id).OrderBy(q => q.GroupOrder).ThenBy(q => q.Id).ToList();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Load();
+        if (EditId.HasValue && groups.FirstOrDefault(g => g.Id == EditId) is { } g)
+            Edit(g);
+    }
+
+    private bool canCreate,
+        canEdit,
+        canDelete;
+
+    private async Task Load()
+    {
+        canCreate = await Access.CanAsync(Permissions.QuestionCreate);
+        canEdit = await Access.CanAsync(Permissions.QuestionEdit);
+        canDelete = await Access.CanAsync(Permissions.QuestionDelete);
+        groups = await Groups.ListAsync();
+        all = await Questions.ListAsync();
+    }
+
+    private void Create()
+    {
+        if (!canCreate)
+            return;
+        draft = new();
+        media = [];
+        error = message = null;
+        inputKey++;
+    }
+
+    private void Edit(QuestionGroup g)
+    {
+        if (!canEdit)
+            return;
+        draft = new()
+        {
+            Id = g.Id,
+            Title = g.Title,
+            Content = g.Content,
+            MediaJson = g.MediaJson,
+        };
+        media = g
+            .Media.Select(m => new QuestionMedia
+            {
+                Kind = m.Kind,
+                Url = m.Url,
+                Description = m.Description,
+            })
+            .ToList();
+        error = message = null;
+        inputKey++;
+    }
+
+    private void Cancel()
+    {
+        draft = null;
+        media = [];
+        error = message = null;
+        if (EditId.HasValue)
+            Navigation.NavigateTo("/admin/groups", replace: true);
+    }
+
+    private Task Save() =>
+        Run(async () =>
+        {
+            draft!.Media = media.Select(m => new AnswerMediaSnapshot(m.Kind, m.Url, m.Description)).ToList();
+            draft.Id = await Groups.SaveAsync(draft);
+            await Load();
+            message = "公共材料已保存，可以继续添加小题。";
+        });
+
+    private Task Move(Question q, int direction) =>
+        Run(async () =>
+        {
+            await Groups.MoveAsync(draft!.Id, q.Id, direction);
+            all = await Questions.ListAsync();
+        });
+
+    private Task Delete() =>
+        Run(async () =>
+        {
+            await Groups.DeleteAsync(pendingDelete!.Id);
+            pendingDelete = null;
+            await Load();
+            message = "空题组已删除，历史快照保留。";
+        });
+
+    private Task Upload(InputFileChangeEventArgs args) =>
+        Run(async () =>
+        {
+            if (args.FileCount > 5 - media.Count)
+                throw new InvalidOperationException("公共媒体最多 5 个，请减少选择数量。");
+            try
+            {
+                foreach (var file in args.GetMultipleFiles(5))
+                {
+                    var prepared = await MikuTest.Web.Services.ImageUploadPreparation.PrepareAsync(
+                        file,
+                        CancellationToken.None
+                    );
+                    media.Add(await Uploads.SaveAsync(prepared));
+                }
+                message = "媒体已上传，请保存公共材料。";
+            }
+            finally
+            {
+                inputKey++;
+            }
+        });
+
+    private async Task Run(Func<Task> action)
+    {
+        if (busy)
+            return;
+        busy = true;
+        error = message = null;
+        try
+        {
+            await action();
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Group operation failed");
+            error = "操作失败，请检查文件或稍后重试。";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

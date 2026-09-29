@@ -1,0 +1,43 @@
+<div class="bank-filters" aria-label="题库筛选">
+ <label class="filter-search">题干或 ID<input type="search" placeholder="搜索题干或 ID，#12 精确查找" @bind="Filter.Search" @bind:event="oninput" @bind:after="Changed" /></label>
+ <label>考察领域<select @bind="Filter.DomainId" @bind:after="Changed"><option value="">全部领域</option>@foreach(var domain in Domains){<option value="@domain.Id">@domain.Name</option>}</select></label>
+ <label>标签<select @bind="Filter.TagId" @bind:after="Changed"><option value="">全部标签</option>@foreach(var tag in Tags){<option value="@tag.Id">@tag.Name</option>}</select></label>
+ <label>难度<select @bind="Filter.Difficulty" @bind:after="Changed"><option value="">全部难度</option><option value="@Difficulty.Easy">简单</option><option value="@Difficulty.Normal">普通</option><option value="@Difficulty.Hard">困难</option></select></label>
+ <label>题目类型<select @bind="Filter.Type" @bind:after="Changed"><option value="">全部类型</option><option value="text">普通单选（无媒体）</option><option value="image">图片</option><option value="audio">音频</option><option value="video">视频</option></select></label>
+ <label>ID 排序<select @bind="SortDirection" @bind:after="Changed"><option value="asc">从小到大</option><option value="desc">从大到小</option></select></label>
+ <button class="secondary" type="button" @onclick="Reset">重置筛选</button>
+</div>
+<p class="muted filter-summary" role="status">匹配 @Count / @Total 题 · 多个筛选条件同时生效</p>
+
+@code {
+    [Parameter, EditorRequired]
+    public BankFilter Filter { get; set; } = default!;
+
+    [Parameter]
+    public IEnumerable<KnowledgeDomain> Domains { get; set; } = [];
+
+    [Parameter]
+    public IEnumerable<Tag> Tags { get; set; } = [];
+
+    [Parameter]
+    public int Count { get; set; }
+
+    [Parameter]
+    public int Total { get; set; }
+
+    [Parameter]
+    public EventCallback OnChanged { get; set; }
+    private string SortDirection
+    {
+        get => Filter.Descending ? "desc" : "asc";
+        set => Filter.Descending = value == "desc";
+    }
+
+    private Task Changed() => OnChanged.InvokeAsync();
+
+    private async Task Reset()
+    {
+        Filter.Reset();
+        await Changed();
+    }
+}

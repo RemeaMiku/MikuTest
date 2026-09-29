@@ -1,0 +1,533 @@
+@page "/admin/questions"
+@attribute [Authorize(Policy = Permissions.QuestionView)]
+@rendermode InteractiveServer
+@inject MikuTest.Web.Services.QuestionService Questions
+@inject MikuTest.Web.Services.QuizService Quizzes
+@inject MikuTest.Web.Services.QuizAdminService QuizAdmin
+@inject ILogger<AdminQuestions> Logger
+@inject IManagementAccess Access
+@inject NavigationManager Navigation
+@inject MikuTest.Web.Services.MediaUploadService Uploads
+@inject MikuTest.Web.Services.QuestionGroupService Groups
+@implements IDisposable
+<ActionFeedback Message="@message" Error="@error" />
+<PageTitle>MikuTest · 独立题库</PageTitle>
+
+<div class="eyebrow">QUESTION BANK</div><h1>独立题库</h1>
+<p>筛选、预览和维护独立题库。选择目标测试后，可以直接把题目加入测试末尾。</p>
+
+
+@if (questions is null) { <p>正在加载…</p> }
+else
+{
+    <fieldset disabled="@busy" class="admin-controls">
+    @if (draft is not null)
+    {
+        <section class="card editor admin-form-card">
+        <h2>@(draft.Id == 0 ? "新增题目" : $"编辑题目 #{draft.Id}")</h2>
+        <label>公共材料<select @bind="draft.GroupId"><option value="">独立题目（无公共材料）</option>@foreach(var group in groups){<option value="@group.Id">#@group.Id · @group.Title</option>}</select></label>
+        @if(draft.GroupId.HasValue){<details class="bank-preview"><summary>查看公共材料</summary><SharedMaterial Group="@groups.FirstOrDefault(g=>g.Id==draft.GroupId)" /></details><a class="secondary" href="@($"/admin/groups?edit={draft.GroupId}")">返回题组管理</a>}
+        <label>难度<select @bind="draft.Difficulty"><option value="@Difficulty.Easy">简单</option><option value="@Difficulty.Normal">普通</option><option value="@Difficulty.Hard">困难</option></select></label>
+        <fieldset class="domain-editor"><legend>考察领域（可多选，至少选择一个）</legend>
+        @if (domains is not null)
+        {
+            @foreach (var domain in domains)
+            {
+                <label class="domain-choice"><input type="checkbox" checked="@selectedDomains.Contains(domain.Id)" @onchange="e => ToggleDomain(domain.Id, (bool)e.Value!)" /> @domain.Name</label>
+            }
+        }
+        </fieldset>
+        <fieldset class="tag-picker"><legend>标签（可多选，最多 10 个）</legend>
+            <label>查找已有标签<input type="search" placeholder="输入标签名称筛选" @bind="tagSearch" @bind:event="oninput" /></label>
+            <div class="tag-picker-options">
+            @foreach(var name in VisibleTags){
+                <label class="tag-option" @key="name"><input type="checkbox" checked="@selectedTags.Contains(name)" disabled="@(!selectedTags.Contains(name) && selectedTags.Count >= 10)" @onchange="e=>ToggleTag(name,(bool)e.Value!)" />@name @if(pendingTags.Contains(name)){<small>待保存</small>}</label>
+            }
+            @if(!VisibleTags.Any()){<p class="muted">没有匹配的标签，可点击“新增标签”。</p>}
+            </div>
+            <p class="muted">已选 @selectedTags.Count / 10
+                @if(selectedTags.Count>0){<text>：@string.Join("、",selectedTags.OrderBy(t=>t))</text>}
+            </p>
+            @if(addingTag){
+                <div class="tag-create"><label>新标签名称<input maxlength="30" placeholder="例如：主题曲" @bind="newTagName" @bind:event="oninput" @onkeydown="TagKeyDown" /></label>
+                <button type="button" class="secondary" @onclick="AddTag">添加并选中</button><button type="button" class="secondary" @onclick="CloseTagCreator">取消新增</button></div>
+                <p class="muted">新标签随题目一起保存；取消编辑不会创建标签。</p>
+            }else{<button type="button" class="secondary" disabled="@(selectedTags.Count>=10)" @onclick="()=>addingTag=true">新增标签</button>}
+            @if(tagError is not null){<p class="admin-error" role="alert">@tagError</p>}
+        </fieldset>
+        <label>题干<textarea rows="3" maxlength="2000" @bind="draft.Text" @bind:event="oninput"></textarea></label>
+
+        <h3>选项 · 请选择一个正确答案</h3>
+        <p class="muted">每个选项可附 1 张图片，也可只使用图片。支持拖拽上传，图片沿用下方的压缩和大小限制。</p>
+        @foreach (var choice in draft.Choices)
+        {
+            <div class="option-card" @key="choice"><div class="option-editor"><label class="correct-label"><input type="radio" name="correct-choice" checked="@choice.IsCorrect" @onchange="() => SetCorrect(choice)" />正确</label>
+            <textarea class="auto-grow" data-auto-grow rows="1" aria-label="@($"选项 {draft.Choices.IndexOf(choice) + 1}")" maxlength="1000" @bind="choice.Text" @bind:event="oninput"></textarea>
+            <button class="secondary" disabled="@(draft.Choices.Count <= 2)" @onclick="() => draft.Choices.Remove(choice)">移除选项</button></div>
+            <div class="option-image-editor">
+            @if(choice.ImageUrl is not null){<img class="option-image" src="@choice.ImageUrl" alt="@($"选项 {draft.Choices.IndexOf(choice)+1} 图片预览")" /><button type="button" class="secondary" @onclick="()=>choice.ImageUrl=null">移除图片</button>}
+            <div class="media-dropzone option-dropzone"><span>@(choice.ImageUrl is null ? "拖拽或选择选项图片（最多 1 张）" : "拖拽或选择图片以替换")</span><InputFile OnChange="e=>UploadChoiceImage(choice,e)" accept=".png,.jpg,.jpeg,.gif,.webp" disabled="@busy" aria-label="@($"上传选项 {draft.Choices.IndexOf(choice)+1} 图片")" /></div>
+            </div></div>
+        }
+        <button class="secondary" disabled="@(draft.Choices.Count >= 8)" @onclick="() => draft.Choices.Add(new Choice())">添加选项</button>
+        <label>解析<textarea class="auto-grow explanation-input" data-auto-grow rows="2" maxlength="4000" @bind="draft.Explanation" @bind:event="oninput"></textarea></label>
+        <h3 class="media-heading">媒体（可选）</h3>
+        <p class="muted">图片 ≤ 2 MB，音频 ≤ 5 MB，视频 ≤ 15 MB。每题最多 5 个媒体。</p>
+        <p class="muted">静态图片自动等比例压缩，长边最多 1600 像素（原图最多 20 MB）。GIF / 动态 WebP 保留动画，须在 2 MB 内。音视频请截取答题所需片段，视频建议 720p。</p>
+        <div class="media-dropzone @(uploading ? "uploading" : "")">
+            <strong>@(uploading ? "正在上传，请稍候…" : "拖拽文件到这里，或点击选择文件")</strong>
+            <span>PNG / JPG / GIF / WebP · MP3 / WAV / OGG · MP4 / WebM</span>
+            <InputFile @key="uploadInputKey" OnChange="UploadMedia" multiple accept="@MikuTest.Web.Services.MediaUploadService.Accept" disabled="@(busy || draft.Media.Count >= 5)" aria-label="上传题目媒体" />
+        </div>
+        @if(uploading){<p role="status">@uploadStatus</p><progress max="100" value="@uploadPercent" aria-label="媒体上传进度"></progress>}
+        @if(draft.Media.Count >= 5){<p class="muted">已达到 5 个媒体，请先移除一个再上传。</p>}
+        @foreach (var media in draft.Media)
+        {
+            <div class="media-editor" @key="media"><strong>@KindName(media.Kind)</strong>
+            @switch(media.Kind){case MediaKind.Image:<img class="upload-preview" src="@media.Url" alt="@media.Description" /> break;
+                case MediaKind.Audio:<audio @key="media.Url" class="upload-preview" src="@media.Url" controls preload="metadata" aria-label="音频预览">浏览器不支持音频预览。</audio><a href="@media.Url" target="_blank" rel="noopener">打开音频文件</a> break;
+                case MediaKind.Video:<video class="upload-preview" src="@media.Url" controls preload="metadata" playsinline></video> break;}
+            <label>媒体描述<input maxlength="500" placeholder="描述媒体内容或注明来源" @bind="media.Description" @bind:event="oninput" /></label>
+            <button class="secondary" @onclick="() => draft.Media.Remove(media)">移除媒体</button></div>
+        }
+        <div class="form-actions"><button class="button" @onclick="Save">@(busy ? "正在保存…" : "保存题目")</button><button class="secondary" @onclick="Cancel">取消编辑</button></div>
+        </section>
+    }
+    else if (pendingDelete is not null)
+    {
+        <section class="card admin-form-card" role="alert"><h2>确认删除题目 #@pendingDelete.Id？</h2><p>@pendingDelete.Text</p>
+        <p>题目会从所有预制测试和随机抽题池中删除；已提交的历史成绩快照仍会保留。</p>
+        <div class="form-actions"><button class="danger" @onclick="Delete">确认删除</button><button class="secondary" @onclick="Cancel">取消删除</button></div></section>
+    }
+    else
+    {
+        <div class="toolbar">@if(canCreate){<button class="button" @onclick="Create">新增题目</button>}</div>
+        <QuestionBankFilters Filter="filter" Domains="@(domains ?? [])" Tags="BankTags" Count="Filtered.Count" Total="questions.Count" OnChanged="RefreshFilters" />
+        @if(canQuiz){<div class="bank-target"><label>加入目标测试<select @bind="targetQuizId"><option value="0">请选择一套测试</option>@foreach(var target in targets){<option value="@target.Id">#@target.Id · @target.Title（@(target.IsPublished?"已上架":target.IsDeleted?"已下架":"草稿")）</option>}</select></label>
+        @if(Target is not null){<a class="secondary" href="@($"/admin/quizzes/{targetQuizId}")">编排这套测试 →</a>}else{<span class="muted">仅可加入草稿或已下架测试</span>}</div>}
+        <BankCandidates Questions="Filtered" AllQuestions="questions" Included="@(Target?.Questions.Select(q=>q.Id).ToHashSet()??[])" CanAdd="@(Target is not null)" Busy="busy" OnAdd="AddToQuiz" OnEdit="Edit" OnDelete="ConfirmDelete" CanEdit="canEdit" CanDelete="canDelete" ShowAdd="canQuiz" />
+        @if (questions.Count == 0) { <p>暂无题目，点击“新增独立题目”开始。</p> }
+        else if(Filtered.Count == 0){<p role="status">没有匹配的题目，请调整或重置筛选。</p>}
+    }
+    </fieldset>
+}
+
+@code {
+    private readonly CancellationTokenSource uploadCancellation = new();
+    private bool uploading;
+    private string uploadStatus = "";
+    private int uploadPercent,
+        uploadInputKey;
+
+    public void Dispose()
+    {
+        uploadCancellation.Cancel();
+        uploadCancellation.Dispose();
+    }
+
+    private async Task UploadMedia(InputFileChangeEventArgs args)
+    {
+        if (busy || draft is null)
+            return;
+        await Run(async () =>
+        {
+            var remaining = 5 - draft.Media.Count;
+            if (args.FileCount > remaining)
+                throw new InvalidOperationException(
+                    $"还可以添加 {remaining} 个媒体，本次选择了 {args.FileCount} 个。请重新选择。"
+                );
+            uploading = true;
+            var failures = new List<string>();
+            var added = 0;
+            var optimized = new List<string>();
+            try
+            {
+                foreach (var file in args.GetMultipleFiles(5))
+                {
+                    uploadStatus = $"正在处理：{file.Name}";
+                    uploadPercent = 0;
+                    StateHasChanged();
+                    try
+                    {
+                        var prepared = await MikuTest.Web.Services.ImageUploadPreparation.PrepareAsync(
+                            file,
+                            uploadCancellation.Token
+                        );
+                        uploadStatus = $"正在上传：{file.Name}";
+                        StateHasChanged();
+                        var media = await Uploads.SaveAsync(
+                            prepared,
+                            bytes =>
+                            {
+                                var percent = (int)(bytes * 100 / prepared.Size);
+                                if (percent != uploadPercent)
+                                {
+                                    uploadPercent = percent;
+                                    StateHasChanged();
+                                }
+                            },
+                            uploadCancellation.Token
+                        );
+                        draft.Media.Add(media);
+                        added++;
+                        if (!ReferenceEquals(prepared, file))
+                            optimized.Add(
+                                $"{file.Name}：{file.Size / 1024d:F0} KB → {prepared.Size / 1024d:F0} KB"
+                            );
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        failures.Add($"{file.Name}：{ex.Message}");
+                    }
+                    catch (JSException)
+                    {
+                        failures.Add(
+                            $"{file.Name}：图片处理失败，请确认文件可正常打开，或换用 PNG / JPG 后重试。"
+                        );
+                    }
+                    catch (IOException)
+                    {
+                        failures.Add($"{file.Name}：上传中断，请重新上传。");
+                    }
+                }
+                if (added > 0)
+                    message =
+                        $"已上传 {added} 个媒体，请保存题目以应用更改。"
+                        + (optimized.Count > 0 ? " 图片优化：" + string.Join("；", optimized) : "");
+                if (failures.Count > 0)
+                    error = string.Join("；", failures);
+            }
+            finally
+            {
+                uploading = false;
+                uploadInputKey++;
+            }
+        });
+    }
+
+    private Task UploadChoiceImage(Choice choice, InputFileChangeEventArgs args) =>
+        Run(async () =>
+        {
+            var file = args.File;
+            if (
+                !new[] { ".png", ".jpg", ".jpeg", ".gif", ".webp" }.Contains(
+                    Path.GetExtension(file.Name).ToLowerInvariant()
+                )
+            )
+                throw new InvalidOperationException("选项仅支持图片。");
+            var prepared = await MikuTest.Web.Services.ImageUploadPreparation.PrepareAsync(
+                file,
+                uploadCancellation.Token
+            );
+            var media = await Uploads.SaveAsync(prepared, cancellationToken: uploadCancellation.Token);
+            choice.ImageUrl = media.Url;
+            message = "选项图片已上传，请保存题目以应用更改。";
+        });
+
+    [SupplyParameterFromQuery(Name = "quizId")]
+    public int? InitialQuizId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "groupId")]
+    public int? InitialGroupId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "edit")]
+    public int? EditId { get; set; }
+    private List<QuestionGroup> groups = [];
+    private readonly BankFilter filter = new();
+    private List<Quiz> targets = [];
+    private int targetQuizId;
+    private Quiz? Target => targets.FirstOrDefault(q => q.Id == targetQuizId);
+    private List<Question> Filtered => filter.Apply(questions ?? []);
+    private IEnumerable<Tag> BankTags =>
+        (questions ?? []).SelectMany(q => q.Tags).DistinctBy(t => t.Id).OrderBy(t => t.Name);
+
+    private void RefreshFilters() { }
+
+    private bool IsIncluded(int id) => Target?.Questions.Any(q => q.Id == id) == true;
+
+    protected override void OnParametersSet()
+    {
+        if (InitialQuizId.HasValue)
+            targetQuizId = InitialQuizId.Value;
+        if (questions is not null && draft is null)
+        {
+            if (EditId.HasValue && questions.FirstOrDefault(q => q.Id == EditId) is { } q)
+                Edit(q);
+            else if (InitialGroupId.HasValue && canCreate)
+            {
+                Create();
+                draft!.GroupId = InitialGroupId;
+            }
+        }
+    }
+
+    private List<Question>? questions;
+    private List<KnowledgeDomain>? domains;
+    private Question? draft,
+        pendingDelete;
+    private List<Tag> allTags = [];
+    private readonly HashSet<string> selectedTags = new(StringComparer.OrdinalIgnoreCase),
+        pendingTags = new(StringComparer.OrdinalIgnoreCase);
+    private string tagSearch = "",
+        newTagName = "";
+    private bool addingTag;
+    private string? tagError;
+    private IEnumerable<string> TagOptions =>
+        allTags
+            .Select(t => t.Name)
+            .Concat(pendingTags)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t);
+    private IEnumerable<string> VisibleTags =>
+        TagOptions.Where(t => t.Contains(tagSearch.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private void ToggleTag(string name, bool value)
+    {
+        tagError = null;
+        if (value)
+        {
+            if (selectedTags.Count < 10)
+                selectedTags.Add(name);
+        }
+        else
+            selectedTags.Remove(name);
+    }
+
+    private void CloseTagCreator()
+    {
+        addingTag = false;
+        newTagName = "";
+        tagError = null;
+    }
+
+    private void ResetTagEditor()
+    {
+        selectedTags.Clear();
+        pendingTags.Clear();
+        tagSearch = "";
+        CloseTagCreator();
+    }
+
+    private void TagKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            AddTag();
+    }
+
+    private void AddTag()
+    {
+        tagError = null;
+        var name = newTagName.Trim();
+        if (name.Length == 0 || name.Length > 30)
+        {
+            tagError = "请输入 1～30 字的标签名称。";
+            return;
+        }
+        if (name.Any(char.IsControl) || name.Contains(',') || name.Contains('，'))
+        {
+            tagError = "请一次添加一个标签，不要包含逗号或换行。";
+            return;
+        }
+        var existing = TagOptions.FirstOrDefault(t =>
+            string.Equals(t, name, StringComparison.OrdinalIgnoreCase)
+        );
+        if (selectedTags.Count >= 10 && !selectedTags.Contains(existing ?? name))
+        {
+            tagError = "每题最多选择 10 个标签。";
+            return;
+        }
+        if (existing is null)
+            pendingTags.Add(name);
+        selectedTags.Add(existing ?? name);
+        tagSearch = "";
+        CloseTagCreator();
+    }
+
+    private bool busy;
+    private string? error,
+        message;
+    private readonly HashSet<int> selectedDomains = [];
+
+    protected override async Task OnInitializedAsync() => await Run(Load);
+
+    private bool canCreate,
+        canEdit,
+        canDelete,
+        canQuiz;
+
+    private async Task Load()
+    {
+        canCreate = await Access.CanAsync(Permissions.QuestionCreate);
+        canEdit = await Access.CanAsync(Permissions.QuestionEdit);
+        canDelete = await Access.CanAsync(Permissions.QuestionDelete);
+        canQuiz = await Access.CanAsync(Permissions.QuizManage);
+        questions = await Questions.ListAsync();
+        domains = await Questions.DomainsAsync();
+        targets = canQuiz ? (await Quizzes.AdminListAsync()).Where(q => !q.IsPublished).ToList() : [];
+        allTags = await Questions.TagsAsync();
+        groups = await Groups.ListAsync();
+    }
+
+    private Task AddToQuiz(int[] ids) =>
+        Run(async () =>
+        {
+            await QuizAdmin.AddQuestionsAsync(targetQuizId, ids);
+            targets = (await Quizzes.AdminListAsync()).Where(q => !q.IsPublished).ToList();
+            message = $"已将 {ids.Length} 道小题加入“{Target?.Title}”，同一材料自动集中展示。";
+        });
+
+    private void Create()
+    {
+        if (!canCreate)
+            return;
+        error = message = null;
+        ResetTagEditor();
+        selectedDomains.Clear();
+        draft = new Question { Difficulty = Difficulty.Normal, Choices = [new(), new()] };
+    }
+
+    private void Edit(Question q)
+    {
+        if (!canEdit)
+            return;
+        error = message = null;
+        draft = new Question
+        {
+            Id = q.Id,
+            GroupId = q.GroupId,
+            GroupOrder = q.GroupOrder,
+            Text = q.Text,
+            Explanation = q.Explanation,
+            Difficulty = q.Difficulty,
+            Choices = q
+                .Choices.OrderBy(c => c.Id)
+                .Select(c => new Choice
+                {
+                    Id = c.Id,
+                    Text = c.Text,
+                    ImageUrl = c.ImageUrl,
+                    IsCorrect = c.IsCorrect,
+                })
+                .ToList(),
+            Media = q
+                .Media.Select(m => new QuestionMedia
+                {
+                    Id = m.Id,
+                    Kind = m.Kind,
+                    Url = m.Url,
+                    Description = m.Description,
+                })
+                .ToList(),
+        };
+        ResetTagEditor();
+        foreach (var tag in q.Tags)
+            selectedTags.Add(tag.Name);
+        selectedDomains.Clear();
+        foreach (var domain in q.Domains)
+            selectedDomains.Add(domain.Id);
+    }
+
+    private void ToggleDomain(int id, bool value)
+    {
+        if (value)
+            selectedDomains.Add(id);
+        else
+            selectedDomains.Remove(id);
+    }
+
+    private void SetCorrect(Choice selected)
+    {
+        foreach (var c in draft!.Choices)
+            c.IsCorrect = c == selected;
+    }
+
+    private void Cancel()
+    {
+        draft = pendingDelete = null;
+        selectedDomains.Clear();
+        ResetTagEditor();
+        error = message = null;
+        ClearEditorQuery();
+    }
+
+    private void ClearEditorQuery()
+    {
+        if (EditId.HasValue || InitialGroupId.HasValue)
+            Navigation.NavigateTo(
+                Navigation.GetUriWithQueryParameters(
+                    new Dictionary<string, object?> { ["edit"] = null, ["groupId"] = null }
+                ),
+                replace: true
+            );
+    }
+
+    private void ConfirmDelete(Question q)
+    {
+        if (!canDelete)
+            return;
+        error = message = null;
+        pendingDelete = q;
+    }
+
+    private async Task Save() =>
+        await Run(async () =>
+        {
+            await Questions.SaveAsync(draft!, selectedTags, selectedDomains);
+            draft = null;
+            selectedDomains.Clear();
+            ResetTagEditor();
+            await Load();
+            message = "题目已保存。";
+            ClearEditorQuery();
+        });
+
+    private async Task Delete() =>
+        await Run(async () =>
+        {
+            await Questions.DeleteAsync(pendingDelete!.Id);
+            pendingDelete = null;
+            await Load();
+            message = "题目已删除，历史成绩快照已保留。";
+        });
+
+    private async Task Run(Func<Task> action)
+    {
+        if (busy)
+            return;
+        busy = true;
+        error = message = null;
+        try
+        {
+            await action();
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Question management failed");
+            error = "操作失败，请稍后重试。";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private static string KindName(MediaKind kind) =>
+        kind switch
+        {
+            MediaKind.Image => "图片",
+            MediaKind.Audio => "音频",
+            _ => "视频",
+        };
+
+    private static string DifficultyName(Difficulty value) =>
+        value switch
+        {
+            Difficulty.Easy => "简单",
+            Difficulty.Hard => "困难",
+            _ => "普通",
+        };
+}

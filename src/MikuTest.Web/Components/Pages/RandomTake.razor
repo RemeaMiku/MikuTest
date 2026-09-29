@@ -1,0 +1,92 @@
+@page "/practice/{Id:guid}"
+@rendermode InteractiveServer
+@inject MikuTest.Web.Services.RandomQuizService RandomQuiz
+@inject AuthenticationStateProvider Auth
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+<ActionFeedback  Error="@error" />
+<PageTitle>MikuTest · 随机答题</PageTitle>
+@if(loading){<p role="status">正在加载随机试卷…</p>}
+else if(paper is null){<section class="card"><h1>试卷不存在</h1><p>试卷可能已失效，或者不属于当前账号。</p><a class="secondary" href="/practice">重新组卷</a></section>}
+else{
+ <div class="eyebrow">RANDOM / @questions.Count QUESTIONS</div><h1>@paper.Title</h1><p>已选 @selections.Count / @questions.Count 题。</p>
+ <div class="progress-track" role="progressbar" aria-label="答题进度" aria-valuemin="0" aria-valuemax="@questions.Count" aria-valuenow="@selections.Count"><span style="width:@(questions.Count == 0 ? 0 : selections.Count * 100 / questions.Count)%"></span></div>
+ <div class="answer-layout"><AnswerNavigator Questions="questions" Selections="selections" OnSubmit="RequestSubmit" Submitting="@(submitting || confirming)" /><div class="answer-content">
+ @foreach(var block in QuestionBlocks.Split(questions)){
+ <div class="answer-block"><SharedMaterial Group="block[0].Group" />
+ @foreach(var q in block){<section class="card question" id="@($"question-{q.Id}")" tabindex="-1" @key="q.Id"><QuestionContent Question="q"/>
+ <fieldset disabled="@(submitting || confirming)"><legend class="visually-hidden">第 @q.Order 题选项</legend>
+ @foreach(var choice in q.Choices.OrderBy(c=>c.Id)){<label class="choice"><input type="radio" name="@($"random-{q.Id}")" checked="@(selections.GetValueOrDefault(q.Id)==choice.Id)" @onchange="()=>selections[q.Id]=choice.Id"/> <ChoiceContent Text="@choice.Text" ImageUrl="@choice.ImageUrl" /></label>}
+ </fieldset></section>}
+ </div>}
+
+ <div class="submit-bar"><p class="muted">确认你的选择，记录这一次发现。</p><button class="button" disabled="@(submitting || confirming)" @onclick="RequestSubmit">提交并查看结果 →</button></div>
+ </div></div>
+}
+
+@code {
+    [Parameter]
+    public Guid Id { get; set; }
+    private RandomPaper? paper;
+    private List<Question> questions = [];
+    private readonly Dictionary<int, int> selections = [];
+    private bool loading = true,
+        submitting;
+    private string? error;
+    private string? userId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        var state = await Auth.GetAuthenticationStateAsync();
+        userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var data = await RandomQuiz.GetAsync(Id, userId);
+        paper = data?.Paper;
+        questions = data?.Questions ?? [];
+        loading = false;
+    }
+
+    private bool confirming;
+
+    private async Task RequestSubmit()
+    {
+        if (submitting || confirming)
+            return;
+        confirming = true;
+        try
+        {
+            var unanswered = questions.Count(q => !selections.ContainsKey(q.Id));
+            if (
+                unanswered > 0
+                && !await JS.InvokeAsync<bool>(
+                    "confirm",
+                    $"还有 {unanswered} 道题未作答，未作答题将计 0 分。确定提交吗？"
+                )
+            )
+                return;
+            await Submit();
+        }
+        finally
+        {
+            confirming = false;
+        }
+    }
+
+    private async Task Submit()
+    {
+        submitting = true;
+        try
+        {
+            var attempt = await RandomQuiz.SubmitAsync(Id, selections, userId);
+            Navigation.NavigateTo($"/results/{attempt}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            submitting = false;
+        }
+    }
+}

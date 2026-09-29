@@ -1,0 +1,41 @@
+@using MikuTest.Web.Models
+@inject NavigationManager Navigation
+<h2>@if(Question.Order > 0){<text>@Question.Order. </text>}@Question.Text</h2>
+@if(ShowMaterialReference && Question.GroupId.HasValue && Question.Order > 0){<a class="material-reference" href="@($"{Navigation.Uri.Split('#')[0]}#material-{Question.GroupId}")" data-question-target="@($"material-{Question.GroupId}")">查看公共材料 ↑</a>}
+@foreach(var media in Question.Media) {
+ <figure>
+ @switch(media.Kind) {
+  case MediaKind.Image:
+   <a class="question-image-link" href="@media.Url" target="_blank" rel="noopener" title="点击查看原图">
+    <img class="question-media" src="@media.Url" alt="@media.Description" />
+   </a>
+   break;
+  case MediaKind.Audio:
+   <audio controls preload="metadata" src="@media.Url" aria-label="@media.Description">浏览器不支持音频。</audio>
+   break;
+  case MediaKind.Video:
+   <video class="question-media" controls playsinline preload="metadata" src="@media.Url" aria-label="@media.Description">浏览器不支持视频。</video>
+   break;
+ }
+ <figcaption>@media.Description · <a href="@media.Url" target="_blank" rel="noopener">打开媒体文件</a></figcaption>
+ </figure>
+}
+<div class="question-meta"><span class="difficulty @Question.Difficulty.ToString().ToLowerInvariant()">@DifficultyName(Question.Difficulty)</span>
+@foreach(var domain in Question.Domains.OrderBy(d=>d.Order)){<span class="domain">@domain.Name</span>}
+@foreach(var tag in Question.Tags.OrderBy(t=>t.Name)){<span class="tag">@tag.Name</span>}</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public Question Question { get; set; } = default!;
+
+    [Parameter]
+    public bool ShowMaterialReference { get; set; } = true;
+
+    private static string DifficultyName(Difficulty value) =>
+        value switch
+        {
+            Difficulty.Easy => "简单",
+            Difficulty.Hard => "困难",
+            _ => "普通",
+        };
+}

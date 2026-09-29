@@ -1,0 +1,58 @@
+@page "/superadmin/audit"
+@attribute [Authorize(Policy = Permissions.AuditView)]
+@rendermode InteractiveServer
+@inject ManagementRecords Records
+<ActionFeedback Error="@error" />
+<PageTitle>MikuTest · 审计日志</PageTitle>
+<div class="eyebrow">AUDIT TRAIL</div><h1>审计日志</h1><p>展示最近 200 条匹配记录，包含题库、测试、账号、权限和设置变更。时间按本地时区显示。</p>
+<div class="bank-filters"><label>操作者、操作或目标 ID<input type="search" @bind="search" @bind:event="oninput" /></label><button class="secondary" disabled="@busy" @onclick="Load">查询</button></div>
+<div class="table-wrap"><table class="audit-table"><thead><tr><th>时间 / 操作者</th><th>操作 / 目标</th><th>详情</th></tr></thead><tbody>@foreach(var log in logs){<tr><td>@log.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")<small>@log.ActorName · @log.ActorUserId</small></td><td>@log.Action<small>@log.TargetType · @log.TargetId</small></td><td><details><summary>查看变更</summary><p class="muted">来源 IP：@(log.IpAddress??"未记录")</p><pre class="audit-details">@Pretty(log.Details)</pre></details></td></tr>}</tbody></table></div>
+@if(!busy&&logs.Count==0){<p class="empty-state">暂无匹配的审计记录。</p>}
+
+@code {
+    private List<AuditLog> logs = [];
+    private string search = "";
+    private string? error;
+    private bool busy;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        if (busy)
+            return;
+        busy = true;
+        error = null;
+        try
+        {
+            logs = await Records.AuditAsync(search);
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private static string Pretty(string json)
+    {
+        try
+        {
+            return System.Text.Json.JsonSerializer.Serialize(
+                System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json),
+                new System.Text.Json.JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                }
+            );
+        }
+        catch
+        {
+            return json;
+        }
+    }
+}

@@ -1,0 +1,14 @@
+@page "/account/register"
+@model MikuTest.Web.Pages.Account.RegisterModel
+@{ Layout = null; }
+<!doctype html><html lang="zh-CN"><head><script src="/site-ui.js"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>MikuTest · 注册</title><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/phase2.css"><link rel="stylesheet" href="/design.css"></head>
+<body><div class="shell"><header><a class="brand" href="/">MikuTest <span>ミクテスト</span></a><nav><a href="/">测试广场</a><a href="/practice">随机组卷</a><a href="/account/login">登录</a><button class="theme-toggle" type="button" data-theme-toggle title="依次切换：跟随系统、浅色、深色"><span>主题</span><span class="theme-mode" aria-live="polite"></span></button></nav></header><main>
+<section class="account-card card"><div class="eyebrow">JOIN MIKUTEST</div><h1>创建账号</h1>
+<div asp-validation-summary="ModelOnly" class="form-error"></div>
+@if(!Model.RegistrationEnabled){<p role="status">网站暂未开放新账号注册。</p>}else{
+<form method="post"><label>用户名<input asp-for="Input.UserName" autocomplete="username" maxlength="30" aria-describedby="username-help"></label><span asp-validation-for="Input.UserName" class="validation-message"></span>
+<p id="username-help" class="muted">3–30 位英文字母、数字、下划线或短横线，不区分大小写。昵称可在个人主页修改。</p><label>密码<input asp-for="Input.Password" autocomplete="new-password"></label><span asp-validation-for="Input.Password" class="validation-message"></span>
+<label>确认密码<input asp-for="Input.ConfirmPassword" autocomplete="new-password"></label><span asp-validation-for="Input.ConfirmPassword" class="validation-message"></span>
+<button class="button" type="submit">注册并登录</button></form><p class="muted">密码至少 8 位，包含大写字母、小写字母和数字。无需邮箱；目前不支持密码找回，请妥善保存登录信息。</p>}
+<p>已有账号？<a href="/account/login">登录</a></p></section>
+</main><footer>MIKUTEST · KNOWLEDGE / SOUND / VISION · 非官方学习项目</footer></div></body></html>

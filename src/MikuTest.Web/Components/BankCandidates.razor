@@ -1,0 +1,116 @@
+@if(ShowAdd){<div class="toolbar"><button type="button" class="button" disabled="@(!CanAdd||Busy||selected.Count==0)" @onclick="()=>AddSelected()">加入勾选的 @selected.Count 题</button><span class="muted">勾选小题即可部分加入；已有题目不会重复添加。</span></div>}
+<BankPager Count="Questions.Count" Page="page" PageSize="pageSize" Busy="Busy" OnPage="SetPage" OnPageSize="SetPageSize" />
+<div class="bank-list">
+@foreach(var block in QuestionBlocks.Split(PageQuestions)){
+ var group=block[0].Group;
+ <section class="bank-block action-item @(group is null?"bank-single":"")" @key="@(group is null ? $"q:{block[0].Id}" : $"g:{group.Id}")">
+ @if(group is not null){
+  <div class="group-heading"><div><h3>@group.Title <small>题组 #@group.Id</small></h3><span class="muted">本页 @block.Count 题 · 匹配 @Questions.Count(q=>q.GroupId==group.Id) / 共 @AllQuestions.Count(q=>q.GroupId==group.Id) 题</span></div>
+  @if(ShowAdd){<div class="row-actions item-actions"><button class="secondary" disabled="@(!CanAdd||Busy||Questions.Where(q=>q.GroupId==group.Id).All(q=>Included.Contains(q.Id)))" @onclick="()=>AddIds(Questions.Where(q=>q.GroupId==group.Id).Select(q=>q.Id))">加入匹配题目</button>
+  <button class="secondary" disabled="@(!CanAdd||Busy||AllQuestions.Where(q=>q.GroupId==group.Id).All(q=>Included.Contains(q.Id)))" @onclick="()=>AddIds(AllQuestions.Where(q=>q.GroupId==group.Id).OrderBy(q=>q.GroupOrder).Select(q=>q.Id))">加入整组</button></div>}</div>
+  <details class="bank-preview"><summary>查看公共材料</summary><SharedMaterial Group="group" /></details>
+ }
+ @foreach(var q in block){
+  <div class="bank-question action-item" @key="q.Id">
+   <label class="bank-check"><input hidden="@(!ShowAdd)" type="checkbox" aria-label="@($"选择题目 #{q.Id}")" checked="@selected.Contains(q.Id)" disabled="@(Busy||Included.Contains(q.Id))" @onchange="e=>Select(q.Id,(bool)e.Value!)" />#@q.Id</label>
+   <div class="bank-question-content"><b>@q.Text</b><small class="bank-question-meta"><span class="difficulty">@DifficultyName(q.Difficulty)</span>@foreach(var domain in q.Domains){<span class="domain">@domain.Name</span>}@foreach(var tag in q.Tags){<span class="tag">@tag.Name</span>}</small>
+   <QuestionPreview Question="q" /></div>
+   <div class="row-actions bank-question-actions item-actions">@if(ShowAdd){<button class="button" disabled="@(!CanAdd||Busy||Included.Contains(q.Id))" @onclick="()=>AddIds([q.Id])">@(Included.Contains(q.Id)?"已加入":"加入测试")</button>}
+   @if(CanEdit&&OnEdit.HasDelegate){<button class="secondary" disabled="@Busy" @onclick="()=>OnEdit.InvokeAsync(q)">编辑</button>}
+   @if(CanDelete&&OnDelete.HasDelegate){<button class="danger" disabled="@Busy" @onclick="()=>OnDelete.InvokeAsync(q)">删除</button>}</div>
+  </div>
+ }
+ </section>
+}
+</div>
+<BankPager Count="Questions.Count" Page="page" PageSize="pageSize" Busy="Busy" OnPage="SetPage" OnPageSize="SetPageSize" />
+
+@code {
+    [Parameter]
+    public bool CanEdit { get; set; } = true;
+
+    [Parameter]
+    public bool CanDelete { get; set; } = true;
+
+    [Parameter]
+    public bool ShowAdd { get; set; } = true;
+
+    [Parameter]
+    public List<Question> Questions { get; set; } = [];
+
+    [Parameter]
+    public List<Question> AllQuestions { get; set; } = [];
+
+    [Parameter]
+    public HashSet<int> Included { get; set; } = [];
+
+    [Parameter]
+    public bool CanAdd { get; set; }
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public EventCallback<int[]> OnAdd { get; set; }
+
+    [Parameter]
+    public EventCallback<Question> OnEdit { get; set; }
+
+    [Parameter]
+    public EventCallback<Question> OnDelete { get; set; }
+    private readonly HashSet<int> selected = [];
+    private int page = 1,
+        pageSize = 20;
+    private int[] previousIds = [];
+    private List<Question> PageQuestions =>
+        QuestionBlocks
+            .Split(Questions)
+            .SelectMany(b => b)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+    private void SetPage(int value) =>
+        page = Math.Clamp(value, 1, Math.Max(1, (Questions.Count + pageSize - 1) / pageSize));
+
+    private void SetPageSize(int value)
+    {
+        if (new[] { 10, 20, 50, 100 }.Contains(value))
+        {
+            pageSize = value;
+            page = 1;
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        var ids = Questions.Select(q => q.Id).ToArray();
+        if (!previousIds.SequenceEqual(ids))
+        {
+            page = 1;
+            previousIds = ids;
+        }
+        selected.RemoveWhere(id => Included.Contains(id) || Questions.All(q => q.Id != id));
+    }
+
+    private void Select(int id, bool value)
+    {
+        if (value)
+            selected.Add(id);
+        else
+            selected.Remove(id);
+    }
+
+    private Task AddSelected() => AddIds(Questions.Where(q => selected.Contains(q.Id)).Select(q => q.Id));
+
+    private Task AddIds(IEnumerable<int> ids) =>
+        OnAdd.InvokeAsync(ids.Where(id => !Included.Contains(id)).Distinct().ToArray());
+
+    private static string DifficultyName(Difficulty value) =>
+        value switch
+        {
+            Difficulty.Easy => "简单",
+            Difficulty.Hard => "困难",
+            _ => "普通",
+        };
+}

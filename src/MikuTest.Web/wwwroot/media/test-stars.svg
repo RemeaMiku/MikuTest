@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">星形计数测试卡</title><desc id="desc">浅色背景上有三个蓝绿色星形</desc>
+  <rect width="960" height="540" rx="36" fill="#f4fbfa"/>
+  <g fill="#39c5bb" stroke="#237c77" stroke-width="10">
+    <path d="M230 125l35 105h112l-91 65 35 106-91-66-91 66 35-106-91-65h112z"/>
+    <path d="M480 125l35 105h112l-91 65 35 106-91-66-91 66 35-106-91-65h112z"/>
+    <path d="M730 125l35 105h112l-91 65 35 106-91-66-91 66 35-106-91-65h112z"/>
+  </g>
+</svg>

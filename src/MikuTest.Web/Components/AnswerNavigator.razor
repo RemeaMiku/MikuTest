@@ -1,0 +1,30 @@
+@inject NavigationManager Navigation
+<aside class="answer-navigator" aria-label="答题总览">
+ <div class="eyebrow">ANSWER SHEET</div><h2>答题总览</h2>
+ <p class="answer-summary" aria-live="polite">已答 <strong>@AnsweredCount</strong> / @Questions.Count <span>· 未答 @(Questions.Count - AnsweredCount)</span></p>
+ <div class="progress-track"><span style="width:@(Questions.Count == 0 ? 0 : AnsweredCount * 100 / Questions.Count)%"></span></div>
+ <nav class="question-index" aria-label="跳转到题目">
+ @foreach(var q in Questions.OrderBy(q=>q.Order)) {
+  <a class="question-index-link @(Selections.ContainsKey(q.Id) ? "answered" : "")" href="@(PageUrl + "#question-" + q.Id)" data-question-target="@($"question-{q.Id}")" aria-label="@($"第 {q.Order} 题，{(Selections.ContainsKey(q.Id) ? "已答" : "未答")}")">@q.Order</a>
+ }
+ </nav>
+ @if(Questions.FirstOrDefault(q=>!Selections.ContainsKey(q.Id)) is { } next){<a class="secondary" href="@(PageUrl + "#question-" + next.Id)" data-question-target="@($"question-{next.Id}")">前往未答题 →</a>}
+ else {<p class="all-answered" role="status">全部作答完成，可以提交了。</p>}
+ <button class="button navigator-submit" disabled="@(Submitting || Questions.Count==0)" @onclick="OnSubmit">@(Submitting ? "正在提交…" : "提交答案 →")</button>
+</aside>
+
+@code {
+    [Parameter, EditorRequired]
+    public List<Question> Questions { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public IReadOnlyDictionary<int, int> Selections { get; set; } = new Dictionary<int, int>();
+
+    [Parameter]
+    public EventCallback OnSubmit { get; set; }
+
+    [Parameter]
+    public bool Submitting { get; set; }
+    private int AnsweredCount => Questions.Count(q => Selections.ContainsKey(q.Id));
+    private string PageUrl => Navigation.Uri.Split('#')[0];
+}

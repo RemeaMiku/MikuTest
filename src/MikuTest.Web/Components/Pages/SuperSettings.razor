@@ -1,0 +1,48 @@
+@page "/superadmin/settings"
+@attribute [Authorize(Policy = Permissions.SystemSettings)]
+@rendermode InteractiveServer
+@inject ManagementRecords Records
+<ActionFeedback Message="@message" Error="@error" />
+<PageTitle>MikuTest · 系统设置</PageTitle>
+<div class="eyebrow">SYSTEM SETTINGS</div>
+<h1>系统设置</h1>
+@if (settings is not null)
+{
+    <section class="card editor admin-form-card">
+        <label class="domain-choice"><input type="checkbox" @bind="settings.RegistrationEnabled" />开放新账号注册</label>
+        <label>首页公告<textarea rows="4" maxlength="1000" @bind="settings.Announcement" @bind:event="oninput"></textarea></label>
+        <div class="form-actions">
+            <button class="button" disabled="@busy" @onclick="Save">保存设置</button>
+        </div>
+    </section>
+}
+
+@code {
+    private SiteConfiguration? settings;
+    private bool busy;
+    private string? error,
+        message;
+
+    protected override async Task OnInitializedAsync() => settings = await Records.SettingsAsync();
+
+    private async Task Save()
+    {
+        if (busy)
+            return;
+        busy = true;
+        error = message = null;
+        try
+        {
+            await Records.SaveSettingsAsync(settings!.RegistrationEnabled, settings.Announcement);
+            message = "设置已保存。";
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

@@ -1,0 +1,13 @@
+<details class="bank-preview question-preview">
+ <summary>预览题目</summary>
+ <QuestionContent Question="Question" ShowMaterialReference="false" />
+ @foreach(var choice in Question.Choices.OrderBy(c=>c.Id)){
+  <div class="bank-choice-preview"><ChoiceContent Text="@choice.Text" ImageUrl="@choice.ImageUrl" />@if(choice.IsCorrect){<span class="tag">正确答案</span>}</div>
+ }
+ @if(!string.IsNullOrWhiteSpace(Question.Explanation)){<p class="muted review-explanation">@Question.Explanation</p>}
+</details>
+
+@code {
+    [Parameter, EditorRequired]
+    public Question Question { get; set; } = default!;
+}

@@ -1,0 +1,26 @@
+<nav class="bank-pagination" aria-label="题库分页">
+ <label>每页<select aria-label="每页题目数量" value="@PageSize" @onchange="e=>OnPageSize.InvokeAsync(int.Parse(e.Value!.ToString()!))">@foreach(var size in new[]{10,20,50,100}){<option value="@size">@size 题</option>}</select></label>
+ <span role="status">共 @Count 题 · 第 @Page / @Pages 页</span>
+ @if(Pages>1){<div class="row-actions">@if(Pages>2){<button class="secondary" disabled="@(Page<=1||Busy)" @onclick="()=>OnPage.InvokeAsync(1)">首页</button>}<button class="secondary" disabled="@(Page<=1||Busy)" @onclick="()=>OnPage.InvokeAsync(Page-1)">上一页</button><button class="secondary" disabled="@(Page>=Pages||Busy)" @onclick="()=>OnPage.InvokeAsync(Page+1)">下一页</button>@if(Pages>2){<button class="secondary" disabled="@(Page>=Pages||Busy)" @onclick="()=>OnPage.InvokeAsync(Pages)">末页</button>}</div>}
+</nav>
+
+@code {
+    [Parameter]
+    public int Count { get; set; }
+
+    [Parameter]
+    public int Page { get; set; } = 1;
+
+    [Parameter]
+    public int PageSize { get; set; } = 20;
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public EventCallback<int> OnPage { get; set; }
+
+    [Parameter]
+    public EventCallback<int> OnPageSize { get; set; }
+    private int Pages => Math.Max(1, (Count + PageSize - 1) / PageSize);
+}

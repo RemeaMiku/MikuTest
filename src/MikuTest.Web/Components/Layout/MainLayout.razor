@@ -1,0 +1,38 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+<a class="skip-link" href="@(Navigation.Uri.Split('#')[0] + "#main-content")">跳至正文</a>
+<div class="shell">
+    <header><a class="brand" href="/">MikuTest <span>ミクテスト</span></a>
+        <nav aria-label="主导航"><NavLink href="/" Match="NavLinkMatch.All">测试广场</NavLink><NavLink href="/practice">随机组卷</NavLink>
+        <AuthorizeView Policy="@Permissions.AdminAccess"><a href="/admin" class="@(IsAdmin ? "active" : null)" aria-current="@(IsAdmin ? "page" : null)">管理后台</a></AuthorizeView>
+        <AuthorizeView><Authorized><NavLink href="/me">我的主页</NavLink><form method="post" action="/account/logout"><AntiforgeryToken/><button class="nav-button" type="submit">退出</button></form></Authorized><NotAuthorized><NavLink href="/account/login">登录</NavLink></NotAuthorized></AuthorizeView><button class="theme-toggle" type="button" data-theme-toggle title="依次切换：跟随系统、浅色、深色"><span>主题</span><span class="theme-mode" aria-live="polite"></span></button></nav>
+    </header>
+    <div class="page-frame @(IsAdmin ? "admin-frame" : "")">
+    @if(IsAdmin){<aside class="admin-sidebar"><span class="eyebrow">WORKSPACE / 39</span><h2>管理工作台</h2><nav aria-label="管理导航">
+      <div class="admin-nav-group">
+       <AuthorizeView Policy="@Permissions.AdminAccess"><NavLink href="/admin" Match="NavLinkMatch.All">总览</NavLink></AuthorizeView>
+       <AuthorizeView Policy="@Permissions.QuizManage"><NavLink href="/admin/quizzes">测试管理</NavLink></AuthorizeView>
+       <AuthorizeView Policy="@Permissions.QuestionView"><NavLink href="/admin/questions">独立题库</NavLink><NavLink href="/admin/groups">题组材料</NavLink></AuthorizeView>
+       <AuthorizeView Policy="@Permissions.UserView"><NavLink href="/admin/users">普通账号</NavLink></AuthorizeView>
+      </div>
+      <AuthorizeView Policy="@Permissions.SuperAccess"><div class="admin-nav-group system-nav-group"><span class="nav-group-label">系统管理</span>
+       <a href="/superadmin" class="@(IsAdminManagement ? "active" : null)" aria-current="@(IsAdminManagement ? "page" : null)">管理员与权限</a>
+       <NavLink href="/superadmin/settings">系统设置</NavLink>
+       <NavLink href="/superadmin/audit">审计日志</NavLink>
+      </div></AuthorizeView>
+    </nav><p class="muted">让每一份好奇，<br/>都有值得探索的答案。</p></aside>}
+    <main id="main-content">@Body</main>
+    </div>
+    <footer><span class="footer-brand">MIKUTEST <small>ミクテスト</small></span><span>KNOWLEDGE · SOUND · VISION</span><span>非官方初音未来知识学习项目</span></footer>
+</div>
+<div id="blazor-error-ui">连接或页面发生错误。<a href="" class="reload">重新加载</a><a class="dismiss">关闭</a></div>
+
+@code {
+    private string CurrentPath => Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/');
+    private bool IsAdminManagement =>
+        CurrentPath is "superadmin" or "superadmin/admins" or "superadmin/permissions";
+    private bool IsAdmin =>
+        CurrentPath is "admin" or "superadmin"
+        || CurrentPath.StartsWith("admin/", StringComparison.OrdinalIgnoreCase)
+        || CurrentPath.StartsWith("superadmin/", StringComparison.OrdinalIgnoreCase);
+}

@@ -1,0 +1,48 @@
+# Build and editor output
+**/bin/
+**/obj/
+.vs/
+.vscode/
+*.user
+*.suo
+*.cache
+TestResults/
+artifacts/
+node_modules/
+
+# Local accounts, questions, attempts, audit trails and uploads
+**/App_Data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db3
+*.bak
+*.backup
+*.zip
+*.log
+*.tmp
+*.dmp
+backups/
+logs/
+
+# Credentials and machine-specific settings
+.env
+.env.*
+!.env.example
+**/appsettings.Local.json
+**/appsettings.*.Local.json
+**/secrets.json
+*.pfx
+*.p12
+*.pem
+*.key
+*.publishsettings
+*.pubxml
+*.pubxml.user
+
+# Local replacement artwork; generated demonstration media remain tracked
+src/MikuTest.Web/wwwroot/media/site-cover.webp
+src/MikuTest.Web/wwwroot/media/Img_illust_mikuv4c.png

@@ -1,0 +1,18 @@
+@if(Group is not null){
+ <section class="shared-material" id="@($"material-{Group.Id}")" tabindex="-1">
+ <div class="eyebrow">公共材料</div><h2>@Group.Title</h2>
+ @if(!string.IsNullOrWhiteSpace(Group.Content)){<div class="reading-content">@Group.Content</div>}
+ @foreach(var media in Group.Media){<figure>
+ @switch(media.Kind){
+ case MediaKind.Image:<a href="@media.Url" target="_blank" rel="noopener"><img class="question-media" src="@media.Url" alt="@media.Description" /></a>break;
+ case MediaKind.Audio:<audio src="@media.Url" controls preload="metadata" aria-label="@media.Description"></audio>break;
+ case MediaKind.Video:<video class="question-media" src="@media.Url" controls playsinline preload="metadata" aria-label="@media.Description"></video>break;
+ }
+ <figcaption>@media.Description</figcaption></figure>}
+ </section>
+}
+
+@code {
+    [Parameter]
+    public QuestionGroup? Group { get; set; }
+}
