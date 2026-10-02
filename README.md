@@ -2,6 +2,11 @@
 
 初音未来知识测试网站，使用 .NET 10、ASP.NET Core Blazor Web App、ASP.NET Core Identity、EF Core 和 SQLite。
 
+![首页](demo/home.jpeg)
+![测试页](demo/quiz1.jpg)
+![测试页](demo/quiz2.jpg)
+![管理员仪表盘](demo/dashboard.jpeg)
+![题库管理](demo/question-management.jpeg)
 ## 运行
 
 安装 .NET 10 SDK，在项目根目录执行：
@@ -12,7 +17,9 @@ dotnet build MikuTest.slnx --no-restore
 dotnet run --project src/MikuTest.Web --launch-profile http
 ```
 
-打开 http://localhost:5193。首次启动自动创建数据库和演示题目；后续启动执行兼容升级和幂等初始化。停止服务按 Ctrl+C。
+打开 http://localhost:5193。
+
+首次启动自动创建数据库和演示题目；后续启动执行兼容升级和幂等初始化。停止服务按 Ctrl+C。
 
 源码不含真实题库、用户账号、答题记录、上传文件或本机配置。新环境会显示演示数据，不会恢复原站点数据。
 
@@ -36,6 +43,7 @@ dotnet run --project src/MikuTest.Web --launch-profile http
 - 独立题库、公共阅读材料、文字/图片/音频/视频统一展示，选项可附图。
 - 题目和测试多对多复用；测试编排支持预览、拖拽、置顶/置底及整数分值自动保存。
 - 题库和编排页支持搜索、筛选与分页；新建测试为草稿，上架前完成编排，下架后才能修改。
+- 测试编辑支持拖拽或选择一张封面图、预览与移除；保存后生效，未设置时按题目类型生成图形封面。封面沿用图片压缩与 2 MB 上传限制，存放于本地 App_Data/uploads。
 - 用户主页、昵称与密码修改、个人历史；历史保存作答时的题干、选项、媒体和解析快照。
 - User / Admin / SuperAdmin 身份、细粒度权限、账号禁用与软删除、注册开关、公告及审计日志。
 - 浅色/深色/系统主题、响应式布局、管理侧栏与操作反馈。
